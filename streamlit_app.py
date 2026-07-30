@@ -4,42 +4,150 @@ import io
 import itertools
 import pandas as pd
 
-st.set_page_config(page_title="Shopee Mass Upload Generator (Multi-Product)", layout="wide")
-st.title("📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee (หลายสินค้า & กำหนดราคาแยกได้)")
+st.set_page_config(page_title="Shopee Mass Upload Generator", layout="wide")
 
-# จัดเก็บรายการสินค้าใน Session State (แก้ไข st.sessions -> st.session_state)
+# --- 1. ระบบจัดการภาษา (TH / EN / JA) ---
+LANG_TEXTS = {
+    "TH": {
+        "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee (หลายสินค้า & กำหนดราคาแยกได้)",
+        "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
+        "del_product": "🗑️ ลบสินค้านี้",
+        "product_num": "🛒 สินค้าชิ้นที่",
+        "cat_id": "Category ID / รหัสหมวดหมู่",
+        "parent_sku": "Parent SKU / รหัสอ้างอิงหลัก",
+        "brand": "แบรนด์ (Brand)",
+        "p_name": "ชื่อสินค้า",
+        "weight": "น้ำหนัก (kg)",
+        "p_desc": "รายละเอียดสินค้า",
+        "cover_img": "URL รูปภาพปกหลัก (Cover Image)",
+        "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
+        "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
+        "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
+        "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
+        "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
+        "grid_title": "💰 กำหนดราคา สต๊อก และ SKU สำหรับแต่ละ Variation:",
+        "price_col": "Price (บาท)",
+        "stock_col": "Stock (ชิ้น)",
+        "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
+        "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
+        "btn_download": "📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
+        "default_pname": "เสื้อยืดคอตตอนผ้านุ่มพิเศษ",
+        "default_pdesc": "เสื้อยืดคุณภาพดี ใส่สบาย",
+        "default_v1_name": "สี",
+        "default_v1_opts": "แดง, ดำ",
+        "default_v2_name": "ไซส์",
+        "default_v2_opts": "S, M",
+    },
+    "EN": {
+        "title": "📦 Shopee Mass Upload Generator (Multi-Product & Custom Price)",
+        "add_product": "➕ Add New Product",
+        "del_product": "🗑️ Delete Product",
+        "product_num": "🛒 Product #",
+        "cat_id": "Category ID",
+        "parent_sku": "Parent SKU",
+        "brand": "Brand",
+        "p_name": "Product Name",
+        "weight": "Weight (kg)",
+        "p_desc": "Product Description",
+        "cover_img": "Cover Image URL",
+        "v1_name": "Variation 1 Name (e.g., Color)",
+        "v1_opts": "Variation 1 Options (comma separated)",
+        "v1_imgs": "Variation 1 Image URLs (comma separated)",
+        "v2_name": "Variation 2 Name (e.g., Size) [Optional]",
+        "v2_opts": "Variation 2 Options (comma separated)",
+        "grid_title": "💰 Set Custom Price, Stock, and SKU for Variations:",
+        "price_col": "Price",
+        "stock_col": "Stock",
+        "btn_generate": "🚀 Generate Combined Shopee Excel File",
+        "success_msg": "✅ Successfully generated! Total {count} product(s).",
+        "btn_download": "📥 Download Excel File for Shopee",
+        "default_pname": "Premium Cotton T-Shirt",
+        "default_pdesc": "High quality soft t-shirt, comfortable to wear.",
+        "default_v1_name": "Color",
+        "default_v1_opts": "Red, Black",
+        "default_v2_name": "Size",
+        "default_v2_opts": "S, M",
+    },
+    "JA": {
+        "title": "📦 Shopee 一括出品ファイル生成ツール (複数商品・個別価格対応)",
+        "add_product": "➕ 新しい商品を追加",
+        "del_product": "🗑️ この商品を削除",
+        "product_num": "🛒 商品 #",
+        "cat_id": "カテゴリーID",
+        "parent_sku": "親SKU (Parent SKU)",
+        "brand": "ブランド (Brand)",
+        "p_name": "商品名",
+        "weight": "重量 (kg)",
+        "p_desc": "商品説明",
+        "cover_img": "メインカバー画像URL",
+        "v1_name": "バリエーション1名称 (例: 色)",
+        "v1_opts": "バリエーション1の選択肢 (カンマ区切り)",
+        "v1_imgs": "バリエーション1の画像URL (カンマ区切り)",
+        "v2_name": "バリエーション2名称 (例: サイズ) [任意]",
+        "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
+        "grid_title": "💰 バリエーションごとの価格、在庫、SKUを設定:",
+        "price_col": "価格",
+        "stock_col": "在庫数",
+        "btn_generate": "🚀 全商品まとめてShopee用Excelファイルを生成",
+        "success_msg": "✅ 生成成功！ 合計 {count} 件の商品。",
+        "btn_download": "📥 Shopeeアップロード用Excelをダウンロード",
+        "default_pname": "プレミアムコットンTシャツ",
+        "default_pdesc": "高品質で着心地の良いTシャツです。",
+        "default_v1_name": "カラー",
+        "default_v1_opts": "レッド, ブラック",
+        "default_v2_name": "サイズ",
+        "default_v2_opts": "S, M",
+    }
+}
+
+# เลือกภาษาที่ Sidebar
+st.sidebar.title("🌐 Language / 言語")
+selected_lang = st.sidebar.radio("Select Language", ["TH (ไทย)", "EN (English)", "JA (日本語)"], index=0)
+
+if "EN" in selected_lang:
+    lang_code = "EN"
+elif "JA" in selected_lang:
+    lang_code = "JA"
+else:
+    lang_code = "TH"
+
+T = LANG_TEXTS[lang_code]
+
+st.title(T["title"])
+
+# จัดเก็บรายการสินค้าใน Session State
 if "products" not in st.session_state:
     st.session_state.products = [
         {
             "category_id": "120039",
             "parent_sku": "SHIRT-001",
             "brand": "No Brand",
-            "product_name": "เสื้อยืดคอตตอนผ้านุ่มพิเศษ",
+            "product_name": T["default_pname"],
             "weight": 0.2,
-            "product_desc": "เสื้อยืดคุณภาพดี ใส่สบาย",
+            "product_desc": T["default_pdesc"],
             "cover_image": "https://example.com/shirt_cover.jpg",
-            "v1_name": "สี",
-            "v1_options": "แดง, ดำ",
+            "v1_name": T["default_v1_name"],
+            "v1_options": T["default_v1_opts"],
             "v1_images": "https://example.com/red.jpg, https://example.com/black.jpg",
-            "v2_name": "ไซส์",
-            "v2_options": "S, M",
+            "v2_name": T["default_v2_name"],
+            "v2_options": T["default_v2_opts"],
         }
     ]
 
 # ปุ่มเพิ่มรายการสินค้า
 col_btn1, col_btn2 = st.columns([1, 4])
 with col_btn1:
-    if st.button("➕ เพิ่มสินค้าชิ้นใหม่"):
+    if st.button(T["add_product"]):
         st.session_state.products.append({
             "category_id": "100000",
             "parent_sku": f"ITEM-{len(st.session_state.products)+1:03d}",
             "brand": "No Brand",
-            "product_name": f"สินค้าชิ้นที่ {len(st.session_state.products)+1}",
+            "product_name": f"{T['product_num']} {len(st.session_state.products)+1}",
             "weight": 0.5,
-            "product_desc": "รายละเอียดสินค้า...",
+            "product_desc": "...",
             "cover_image": "https://example.com/cover.jpg",
-            "v1_name": "ตัวเลือก",
-            "v1_options": "แบบ A, แบบ B",
+            "v1_name": "Option",
+            "v1_options": "A, B",
             "v1_images": "",
             "v2_name": "",
             "v2_options": "",
@@ -53,44 +161,44 @@ for idx, p in enumerate(st.session_state.products):
     st.markdown("---")
     col_title, col_del = st.columns([8, 2])
     with col_title:
-        st.subheader(f"🛒 สินค้าชิ้นที่ {idx + 1}: {p['product_name']}")
+        st.subheader(f"{T['product_num']}{idx + 1}: {p['product_name']}")
     with col_del:
         if len(st.session_state.products) > 1:
-            if st.button(f"🗑️ ลบสินค้านี้", key=f"del_{idx}"):
+            if st.button(f"{T['del_product']}", key=f"del_{idx}"):
                 st.session_state.products.pop(idx)
                 st.rerun()
 
     # 1. ข้อมูลหลัก
     c1, c2, c3 = st.columns(3)
     with c1:
-        cat_id = st.text_input("Category ID", value=p["category_id"], key=f"cat_{idx}")
-        p_sku = st.text_input("Parent SKU", value=p["parent_sku"], key=f"psku_{idx}")
-        brand = st.text_input("แบรนด์ (Brand)", value=p["brand"], key=f"brand_{idx}")
+        cat_id = st.text_input(T["cat_id"], value=p["category_id"], key=f"cat_{idx}")
+        p_sku = st.text_input(T["parent_sku"], value=p["parent_sku"], key=f"psku_{idx}")
+        brand = st.text_input(T["brand"], value=p["brand"], key=f"brand_{idx}")
     with c2:
-        p_name = st.text_input("ชื่อสินค้า", value=p["product_name"], key=f"name_{idx}")
-        weight = st.number_input("น้ำหนัก (kg)", value=p["weight"], step=0.01, key=f"w_{idx}")
+        p_name = st.text_input(T["p_name"], value=p["product_name"], key=f"name_{idx}")
+        weight = st.number_input(T["weight"], value=p["weight"], step=0.01, key=f"w_{idx}")
     with c3:
-        p_desc = st.text_area("รายละเอียดสินค้า", value=p["product_desc"], key=f"desc_{idx}")
+        p_desc = st.text_area(T["p_desc"], value=p["product_desc"], key=f"desc_{idx}")
 
     # 2. รูปภาพปก
-    cover_img = st.text_input("URL รูปภาพปกหลัก (Cover Image)", value=p["cover_image"], key=f"cimg_{idx}")
+    cover_img = st.text_input(T["cover_img"], value=p["cover_image"], key=f"cimg_{idx}")
 
     # 3. ตัวเลือก Variation
     cv1, cv2 = st.columns(2)
     with cv1:
-        v1_name = st.text_input("ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)", value=p["v1_name"], key=f"v1n_{idx}")
-        v1_opts = st.text_input("รายการตัวเลือกที่ 1 (คั่นด้วย ,)", value=p["v1_options"], key=f"v1o_{idx}")
-        v1_imgs = st.text_input("URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)", value=p["v1_images"], key=f"v1i_{idx}")
+        v1_name = st.text_input(T["v1_name"], value=p["v1_name"], key=f"v1n_{idx}")
+        v1_opts = st.text_input(T["v1_opts"], value=p["v1_options"], key=f"v1o_{idx}")
+        v1_imgs = st.text_input(T["v1_imgs"], value=p["v1_images"], key=f"v1i_{idx}")
     with cv2:
-        v2_name = st.text_input("ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]", value=p["v2_name"], key=f"v2n_{idx}")
-        v2_opts = st.text_input("รายการตัวเลือกที่ 2 (คั่นด้วย ,)", value=p["v2_options"], key=f"v2o_{idx}")
+        v2_name = st.text_input(T["v2_name"], value=p["v2_name"], key=f"v2n_{idx}")
+        v2_opts = st.text_input(T["v2_opts"], value=p["v2_options"], key=f"v2o_{idx}")
 
-    # คำนวณตาราง Variation เพื่อให้ผู้ใช้กรอกราคา/สต๊อก/SKU แยกตามรายการ
+    # คำนวณตาราง Variation
     list_v1 = [x.strip() for x in v1_opts.split(",") if x.strip()]
     list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
-    # สร้างข้อมูลเริ่มต้นใส่ DataFrame
+    # สร้างข้อมูลใส่ DataFrame
     grid_data = []
     for opt1, opt2 in variations:
         var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
@@ -98,15 +206,15 @@ for idx, p in enumerate(st.session_state.products):
         grid_data.append({
             "Variation": var_title,
             "SKU": f"{p_sku}{sku_suffix}",
-            "Price (บาท)": 150.0,
-            "Stock (ชิ้น)": 50,
+            T["price_col"]: 150.0,
+            T["stock_col"]: 50,
             "Opt1": opt1,
             "Opt2": opt2
         })
     
     df_var = pd.DataFrame(grid_data)
     
-    st.write("💰 **กำหนดราคา สต๊อก และ SKU สำหรับแต่ละ Variation:**")
+    st.write(T["grid_title"])
     edited_df = st.data_editor(
         df_var,
         column_config={
@@ -134,7 +242,7 @@ for idx, p in enumerate(st.session_state.products):
 
 # --- ส่วนของการสร้างไฟล์ EXCEL ---
 st.markdown("---")
-if st.button("🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee", type="primary", use_container_width=True):
+if st.button(T["btn_generate"], type="primary", use_container_width=True):
     try:
         wb = openpyxl.load_workbook("Shopee_template.xlsx")
         ws = wb["Template"] if "Template" in wb.sheetnames else wb.active
@@ -180,8 +288,8 @@ if st.button("🚀 สร้างไฟล์ Excel รวมทุกสิน
                 ws.cell(row=current_row, column=14, value=v2_name)
                 ws.cell(row=current_row, column=15, value=row["Opt2"])
                 
-            ws.cell(row=current_row, column=16, value=row["Price (บาท)"])
-            ws.cell(row=current_row, column=17, value=row["Stock (ชิ้น)"])
+            ws.cell(row=current_row, column=16, value=row[T["price_col"]])
+            ws.cell(row=current_row, column=17, value=row[T["stock_col"]])
             ws.cell(row=current_row, column=18, value=row["SKU"])
             
             # 3. รูปภาพหลักและค่าจัดส่ง
@@ -196,9 +304,9 @@ if st.button("🚀 สร้างไฟล์ Excel รวมทุกสิน
     wb.save(output)
     output.seek(0)
 
-    st.success(f"✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {len(updated_products_data)} รายการ")
+    st.success(T["success_msg"].format(count=len(updated_products_data)))
     st.download_button(
-        label="📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
+        label=T["btn_download"],
         data=output,
         file_name="Shopee_Mass_Upload_MultiProduct.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
