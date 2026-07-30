@@ -2,88 +2,139 @@ import streamlit as st
 import openpyxl
 import io
 import itertools
+import pandas as pd
 
-st.set_page_config(page_title="Shopee Mass Upload Generator", layout="wide")
-st.title("📦 เครื่องมือสร้างไฟล์ Mass Upload สำหรับ Shopee (กำหนด SKU เองได้)")
+st.set_page_config(page_title="Shopee Mass Upload Generator (Multi-Product)", layout="wide")
+st.title("📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee (หลายสินค้า & กำหนดราคาแยกได้)")
 
-with st.form("product_form"):
-    st.subheader("1. ข้อมูลสินค้าหลัก")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        category_id = st.text_input("รหัสหมวดหมู่ (Category ID)", value="120039")
-        parent_sku = st.text_input("Parent SKU / รหัสอ้างอิงหลัก", value="SHIRT-001")
-        brand = st.text_input("แบรนด์ (Brand ID หรือ No Brand)", value="No Brand")
-    with col2:
-        product_name = st.text_input("ชื่อสินค้า", value="เสื้อยืดคอตตอนผ้านุ่มพิเศษ")
-        weight = st.number_input("น้ำหนักสินค้า (kg)", value=0.2, step=0.01)
-    with col3:
-        product_desc = st.text_area("รายละเอียดสินค้า", value="เสื้อยืดคุณภาพดี ใส่สบาย ระบายอากาศได้ดี")
+# จัดเก็บรายการสินค้าใน Session State
+if "products" not in st.sessions:
+    st.session_state.products = [
+        {
+            "category_id": "120039",
+            "parent_sku": "SHIRT-001",
+            "brand": "No Brand",
+            "product_name": "เสื้อยืดคอตตอนผ้านุ่มพิเศษ",
+            "weight": 0.2,
+            "product_desc": "เสื้อยืดคุณภาพดี ใส่สบาย",
+            "cover_image": "https://example.com/shirt_cover.jpg",
+            "v1_name": "สี",
+            "v1_options": "แดง, ดำ",
+            "v1_images": "https://example.com/red.jpg, https://example.com/black.jpg",
+            "v2_name": "ไซส์",
+            "v2_options": "S, M",
+        }
+    ]
 
+# ปุ่มเพิ่ม / ลบ รายการสินค้า
+col_btn1, col_btn2 = st.columns([1, 4])
+with col_btn1:
+    if st.button("➕ เพิ่มสินค้าชิ้นใหม่"):
+        st.session_state.products.append({
+            "category_id": "100000",
+            "parent_sku": f"ITEM-{len(st.session_state.products)+1:03d}",
+            "brand": "No Brand",
+            "product_name": f"สินค้าชิ้นที่ {len(st.session_state.products)+1}",
+            "weight": 0.5,
+            "product_desc": "รายละเอียดสินค้า...",
+            "cover_image": "https://example.com/cover.jpg",
+            "v1_name": "ตัวเลือก",
+            "v1_options": "แบบ A, แบบ B",
+            "v1_images": "",
+            "v2_name": "",
+            "v2_options": "",
+        })
+        st.rerun()
+
+# ฟอร์มกรอกข้อมูลของสินค้าแต่ละตัว
+updated_products_data = []
+
+for idx, p in enumerate(st.session_state.products):
     st.markdown("---")
-    st.subheader("2. รูปภาพสินค้าหลัก (สูงสุด 9 รูป)")
-    col_img1, col_img2 = st.columns(2)
-    with col_img1:
-        cover_image = st.text_input("URL รูปภาพปกหลัก (Cover Image - บังคับ)", value="https://example.com/cover.jpg")
-        img1 = st.text_input("URL รูปภาพประกอบ 1 (Item Image 1)", value="")
-        img2 = st.text_input("URL รูปภาพประกอบ 2 (Item Image 2)", value="")
-        img3 = st.text_input("URL รูปภาพประกอบ 3 (Item Image 3)", value="")
-        img4 = st.text_input("URL รูปภาพประกอบ 4 (Item Image 4)", value="")
-    with col_img2:
-        img5 = st.text_input("URL รูปภาพประกอบ 5 (Item Image 5)", value="")
-        img6 = st.text_input("URL รูปภาพประกอบ 6 (Item Image 6)", value="")
-        img7 = st.text_input("URL รูปภาพประกอบ 7 (Item Image 7)", value="")
-        img8 = st.text_input("URL รูปภาพประกอบ 8 (Item Image 8)", value="")
+    col_title, col_del = st.columns([8, 2])
+    with col_title:
+        st.subheader(f"🛒 สินค้าชิ้นที่ {idx + 1}: {p['product_name']}")
+    with col_del:
+        if len(st.session_state.products) > 1:
+            if st.button(f"🗑️ ลบสินค้านี้", key=f"del_{idx}"):
+                st.session_state.products.pop(idx)
+                st.rerun()
 
-    st.markdown("---")
-    st.subheader("3. ตัวเลือกสินค้า (Variations) & SKU")
-    col_v1, col_v2 = st.columns(2)
-    with col_v1:
-        v1_name = st.text_input("ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)", value="สี")
-        v1_options = st.text_input("รายการตัวเลือกที่ 1 (คั่นด้วย ,)", value="แดง, ดำ, ขาว")
-        v1_images = st.text_input("URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย , ตรงตามจำนวนตัวเลือก)", value="https://example.com/red.jpg, https://example.com/black.jpg, https://example.com/white.jpg")
+    # 1. ข้อมูลหลัก
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        cat_id = st.text_input("Category ID", value=p["category_id"], key=f"cat_{idx}")
+        p_sku = st.text_input("Parent SKU", value=p["parent_sku"], key=f"psku_{idx}")
+        brand = st.text_input("แบรนด์ (Brand)", value=p["brand"], key=f"brand_{idx}")
+    with c2:
+        p_name = st.text_input("ชื่อสินค้า", value=p["product_name"], key=f"name_{idx}")
+        weight = st.number_input("น้ำหนัก (kg)", value=p["weight"], step=0.01, key=f"w_{idx}")
+    with c3:
+        p_desc = st.text_area("รายละเอียดสินค้า", value=p["product_desc"], key=f"desc_{idx}")
+
+    # 2. รูปภาพปก
+    cover_img = st.text_input("URL รูปภาพปกหลัก (Cover Image)", value=p["cover_image"], key=f"cimg_{idx}")
+
+    # 3. ตัวเลือก Variation
+    cv1, cv2 = st.columns(2)
+    with cv1:
+        v1_name = st.text_input("ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)", value=p["v1_name"], key=f"v1n_{idx}")
+        v1_opts = st.text_input("รายการตัวเลือกที่ 1 (คั่นด้วย ,)", value=p["v1_options"], key=f"v1o_{idx}")
+        v1_imgs = st.text_input("URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)", value=p["v1_images"], key=f"v1i_{idx}")
+    with cv2:
+        v2_name = st.text_input("ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]", value=p["v2_name"], key=f"v2n_{idx}")
+        v2_opts = st.text_input("รายการตัวเลือกที่ 2 (คั่นด้วย ,)", value=p["v2_options"], key=f"v2o_{idx}")
+
+    # คำนวณตาราง Variation เพื่อให้ผู้ใช้กรอกราคา/สต๊อก/SKU แยกตามรายการ
+    list_v1 = [x.strip() for x in v1_opts.split(",") if x.strip()]
+    list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
+    variations = list(itertools.product(list_v1, list_v2))
+
+    # สร้างข้อมูลเริ่มต้นใส่ DataFrame ให้แก้ไขง่ายๆ
+    grid_data = []
+    for opt1, opt2 in variations:
+        var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
+        sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
+        grid_data.append({
+            "Variation": var_title,
+            "SKU": f"{p_sku}{sku_suffix}",
+            "Price (บาท)": 150.0,
+            "Stock (ชิ้น)": 50,
+            "Opt1": opt1,
+            "Opt2": opt2
+        })
     
-    with col_v2:
-        v2_name = st.text_input("ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างไว้ได้]", value="ไซส์")
-        v2_options = st.text_input("รายการตัวเลือกที่ 2 (คั่นด้วย ,)", value="S, M, L")
-
-    st.subheader("🔑 ระบุ SKU ของแต่ละ Variation (แยกตามลำดับด้วยเครื่องหมาย ,)")
-    custom_skus_input = st.text_area(
-        "กรอกรายการ SKU ของแต่ละ Variation (คั่นด้วย ,)",
-        value="SHIRT-RED-S, SHIRT-RED-M, SHIRT-RED-L, SHIRT-BLK-S, SHIRT-BLK-M, SHIRT-BLK-L, SHIRT-WHT-S, SHIRT-WHT-M, SHIRT-WHT-L",
-        help="เรียงลำดับ SKU ตามรายการ Variation ที่จะเกิดขึ้น (ถ้าเว้นว่างไว้ ระบบจะใช้ Parent SKU เป็นหลัก)"
+    df_var = pd.DataFrame(grid_data)
+    
+    st.write("💰 **กำหนดราคา สต๊อก และ SKU สำหรับแต่ละ Variation:**")
+    edited_df = st.data_editor(
+        df_var,
+        column_config={
+            "Variation": st.column_config.Column(disabled=True),
+            "Opt1": None,  # ซ่อนคอลัมน์ระบบ
+            "Opt2": None
+        },
+        hide_index=True,
+        key=f"editor_{idx}"
     )
 
-    st.markdown("---")
-    st.subheader("4. ราคา สต๊อก และค่าขนส่ง")
-    col_p1, col_p2, col_p3 = st.columns(3)
-    with col_p1:
-        default_price = st.number_input("ราคาเริ่มต้น (บาท)", value=150.0)
-    with col_p2:
-        default_stock = st.number_input("จำนวนสต๊อกเริ่มต้น", value=50)
-    with col_p3:
-        channel_on = st.selectbox("เปิดช่องทางการจัดส่งหลัก", ["On", "Off"], index=0)
+    updated_products_data.append({
+        "cat_id": cat_id,
+        "p_sku": p_sku,
+        "brand": brand,
+        "p_name": p_name,
+        "weight": weight,
+        "p_desc": p_desc,
+        "cover_img": cover_img,
+        "v1_name": v1_name,
+        "v1_imgs": [x.strip() for x in v1_imgs.split(",") if x.strip()],
+        "v2_name": v2_name,
+        "variations_table": edited_df
+    })
 
-    submit = st.form_submit_button("🚀 สร้างไฟล์ Excel สำหรับ Shopee")
-
-if submit:
-    list_v1 = [x.strip() for x in v1_options.split(",") if x.strip()]
-    list_v1_imgs = [x.strip() for x in v1_images.split(",") if x.strip()]
-    list_v2 = [x.strip() for x in v2_options.split(",") if x.strip()] if v2_name else [""]
-    
-    # รายการ Custom SKU ที่ผู้ใช้ระบุเอง
-    custom_skus = [x.strip() for x in custom_skus_input.split(",") if x.strip()]
-
-    # สร้าง Dictionary จับคู่รูปกับ Variation 1
-    v1_img_dict = {}
-    for i, opt in enumerate(list_v1):
-        if i < len(list_v1_imgs):
-            v1_img_dict[opt] = list_v1_imgs[i]
-        else:
-            v1_img_dict[opt] = ""
-
-    variations = list(itertools.product(list_v1, list_v2))
-    
-    # โหลดไฟล์ Template
+# --- ส่วนของการสร้างไฟล์ EXCEL ---
+st.markdown("---")
+if st.button("🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee", type="primary", use_container_width=True):
     try:
         wb = openpyxl.load_workbook("Shopee_template.xlsx")
         ws = wb["Template"] if "Template" in wb.sheetnames else wb.active
@@ -92,60 +143,64 @@ if submit:
         ws = wb.active
         ws.title = "Template"
 
-    # กำหนดบรรทัดเริ่มต้นสำหรับลงข้อมูล (เริ่มบรรทัดที่ 6)
-    start_row = 6 
+    start_row = 6  # บรรทัดแรกที่จะเริ่มเขียนข้อมูลใน Template
 
-    for idx, (opt1, opt2) in enumerate(variations):
-        current_row = start_row + idx
-        
-        # ดึง SKU ที่กรอกมาใช้ (ถ้ากรอกไม่ครบหรือเว้นว่างไว้ จะใช้ Auto-fallback ให้)
-        if idx < len(custom_skus):
-            variation_sku = custom_skus[idx]
-        else:
-            sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
-            variation_sku = f"{parent_sku}{sku_suffix}"
-        
-        # 1. ข้อมูลพื้นฐานสินค้า (ใส่เฉพาะบรรทัดแรก)
-        ws.cell(row=current_row, column=1, value=category_id)
-        ws.cell(row=current_row, column=2, value=product_name if idx == 0 else "")
-        ws.cell(row=current_row, column=3, value=product_desc if idx == 0 else "")
-        
-        # 2. Variation Integration No. / Parent SKU (คอลัมน์ J)
-        ws.cell(row=current_row, column=10, value=parent_sku)
-        
-        # 3. ข้อมูล Variations (คอลัมน์ K ถึง R)
-        ws.cell(row=current_row, column=11, value=v1_name)                     # K: Variation Name 1
-        ws.cell(row=current_row, column=12, value=opt1)                       # L: Option for Variation 1
-        ws.cell(row=current_row, column=13, value=v1_img_dict.get(opt1, "")) # M: Image per Variation
-        
-        if v2_name and opt2:
-            ws.cell(row=current_row, column=14, value=v2_name)                 # N: Variation Name 2
-            ws.cell(row=current_row, column=15, value=opt2)                   # O: Option for Variation 2
+    for p_data in updated_products_data:
+        cat_id = p_data["cat_id"]
+        p_sku = p_data["p_sku"]
+        p_name = p_data["p_name"]
+        p_desc = p_data["p_desc"]
+        weight = p_data["weight"]
+        cover_img = p_data["cover_img"]
+        v1_name = p_data["v1_name"]
+        v2_name = p_data["v2_name"]
+        v1_imgs = p_data["v1_imgs"]
+        df_vars = p_data["variations_table"]
+
+        # ดึงลิสต์ Option 1 เพื่อแมปกับรูปภาพ
+        unique_v1 = df_vars["Opt1"].unique().tolist()
+        v1_img_dict = {}
+        for i, opt in enumerate(unique_v1):
+            v1_img_dict[opt] = v1_imgs[i] if i < len(v1_imgs) else ""
+
+        for idx, row in df_vars.iterrows():
+            current_row = start_row
             
-        ws.cell(row=current_row, column=16, value=default_price)              # P: Price
-        ws.cell(row=current_row, column=17, value=default_stock)              # Q: Stock
-        ws.cell(row=current_row, column=18, value=variation_sku)              # R: SKU แต่ละ Variation ที่ใส่เอง
-        
-        # 4. ข้อมูลรูปภาพหลัก 9 รูป (คอลัมน์ U ถึง AC - ใส่บรรทัดแรก)
-        if idx == 0:
-            main_images = [cover_image, img1, img2, img3, img4, img5, img6, img7, img8]
-            for col_idx, img_url in enumerate(main_images):
-                if img_url:
-                    ws.cell(row=current_row, column=21 + col_idx, value=img_url)
-                    
-            # น้ำหนักสินค้า (คอลัมน์ AD หรือ 30)
-            ws.cell(row=current_row, column=30, value=weight)
-            # ช่องทางการจัดส่ง (คอลัมน์ AH หรือ 34)
-            ws.cell(row=current_row, column=34, value=channel_on)
+            # 1. ข้อมูลพื้นฐานสินค้า (ลงบรรทัดแรกของสินค้านั้นๆ)
+            ws.cell(row=current_row, column=1, value=cat_id)
+            ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
+            ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
+            ws.cell(row=current_row, column=10, value=p_sku) # Parent SKU
+            
+            # 2. ข้อมูล Variation & Custom Price/Stock/SKU
+            ws.cell(row=current_row, column=11, value=v1_name)
+            ws.cell(row=current_row, column=12, value=row["Opt1"])
+            ws.cell(row=current_row, column=13, value=v1_img_dict.get(row["Opt1"], ""))
+            
+            if v2_name and row["Opt2"]:
+                ws.cell(row=current_row, column=14, value=v2_name)
+                ws.cell(row=current_row, column=15, value=row["Opt2"])
+                
+            ws.cell(row=current_row, column=16, value=row["Price (บาท)"])
+            ws.cell(row=current_row, column=17, value=row["Stock (ชิ้น)"])
+            ws.cell(row=current_row, column=18, value=row["SKU"])
+            
+            # 3. รูปภาพหลักและค่าจัดส่ง (ลงบรรทัดแรก)
+            if idx == 0:
+                ws.cell(row=current_row, column=21, value=cover_img) # Item Cover Image
+                ws.cell(row=current_row, column=30, value=weight)
+                ws.cell(row=current_row, column=34, value="On")
+
+            start_row += 1
 
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
 
-    st.success(f"✅ สร้างไฟล์สำเร็จ! สร้างรายการตัวเลือกทั้งหมด {len(variations)} รายการ")
+    st.success(f"✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {len(updated_products_data)} รายการ")
     st.download_button(
-        label="📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด",
+        label="📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
         data=output,
-        file_name=f"Shopee_Mass_Upload_{parent_sku}.xlsx",
+        file_name="Shopee_Mass_Upload_MultiProduct.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
