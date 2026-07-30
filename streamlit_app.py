@@ -4,7 +4,7 @@ import io
 import itertools
 
 st.set_page_config(page_title="Shopee Mass Upload Generator", layout="wide")
-st.title("📦 เครื่องมือสร้างไฟล์ Mass Upload สำหรับ Shopee (รองรับ 9 รูปภาพ & Variation Images)")
+st.title("📦 เครื่องมือสร้างไฟล์ Mass Upload สำหรับ Shopee (กำหนด SKU เองได้)")
 
 with st.form("product_form"):
     st.subheader("1. ข้อมูลสินค้าหลัก")
@@ -35,7 +35,7 @@ with st.form("product_form"):
         img8 = st.text_input("URL รูปภาพประกอบ 8 (Item Image 8)", value="")
 
     st.markdown("---")
-    st.subheader("3. ตัวเลือกสินค้า (Variations)")
+    st.subheader("3. ตัวเลือกสินค้า (Variations) & SKU")
     col_v1, col_v2 = st.columns(2)
     with col_v1:
         v1_name = st.text_input("ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)", value="สี")
@@ -45,6 +45,13 @@ with st.form("product_form"):
     with col_v2:
         v2_name = st.text_input("ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างไว้ได้]", value="ไซส์")
         v2_options = st.text_input("รายการตัวเลือกที่ 2 (คั่นด้วย ,)", value="S, M, L")
+
+    st.subheader("🔑 ระบุ SKU ของแต่ละ Variation (แยกตามลำดับด้วยเครื่องหมาย ,)")
+    custom_skus_input = st.text_area(
+        "กรอกรายการ SKU ของแต่ละ Variation (คั่นด้วย ,)",
+        value="SHIRT-RED-S, SHIRT-RED-M, SHIRT-RED-L, SHIRT-BLK-S, SHIRT-BLK-M, SHIRT-BLK-L, SHIRT-WHT-S, SHIRT-WHT-M, SHIRT-WHT-L",
+        help="เรียงลำดับ SKU ตามรายการ Variation ที่จะเกิดขึ้น (ถ้าเว้นว่างไว้ ระบบจะใช้ Parent SKU เป็นหลัก)"
+    )
 
     st.markdown("---")
     st.subheader("4. ราคา สต๊อก และค่าขนส่ง")
@@ -62,6 +69,9 @@ if submit:
     list_v1 = [x.strip() for x in v1_options.split(",") if x.strip()]
     list_v1_imgs = [x.strip() for x in v1_images.split(",") if x.strip()]
     list_v2 = [x.strip() for x in v2_options.split(",") if x.strip()] if v2_name else [""]
+    
+    # รายการ Custom SKU ที่ผู้ใช้ระบุเอง
+    custom_skus = [x.strip() for x in custom_skus_input.split(",") if x.strip()]
 
     # สร้าง Dictionary จับคู่รูปกับ Variation 1
     v1_img_dict = {}
@@ -87,7 +97,13 @@ if submit:
 
     for idx, (opt1, opt2) in enumerate(variations):
         current_row = start_row + idx
-        sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
+        
+        # ดึง SKU ที่กรอกมาใช้ (ถ้ากรอกไม่ครบหรือเว้นว่างไว้ จะใช้ Auto-fallback ให้)
+        if idx < len(custom_skus):
+            variation_sku = custom_skus[idx]
+        else:
+            sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
+            variation_sku = f"{parent_sku}{sku_suffix}"
         
         # 1. ข้อมูลพื้นฐานสินค้า (ใส่เฉพาะบรรทัดแรก)
         ws.cell(row=current_row, column=1, value=category_id)
@@ -108,7 +124,7 @@ if submit:
             
         ws.cell(row=current_row, column=16, value=default_price)              # P: Price
         ws.cell(row=current_row, column=17, value=default_stock)              # Q: Stock
-        ws.cell(row=current_row, column=18, value=f"{parent_sku}{sku_suffix}")# R: SKU สำหรับแต่ละ Variation
+        ws.cell(row=current_row, column=18, value=variation_sku)              # R: SKU แต่ละ Variation ที่ใส่เอง
         
         # 4. ข้อมูลรูปภาพหลัก 9 รูป (คอลัมน์ U ถึง AC - ใส่บรรทัดแรก)
         if idx == 0:
