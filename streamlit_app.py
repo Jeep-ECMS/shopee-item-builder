@@ -7,8 +7,8 @@ import pandas as pd
 st.set_page_config(page_title="Shopee Mass Upload Generator (Multi-Product)", layout="wide")
 st.title("📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee (หลายสินค้า & กำหนดราคาแยกได้)")
 
-# จัดเก็บรายการสินค้าใน Session State
-if "products" not in st.sessions:
+# จัดเก็บรายการสินค้าใน Session State (แก้ไข st.sessions -> st.session_state)
+if "products" not in st.session_state:
     st.session_state.products = [
         {
             "category_id": "120039",
@@ -26,7 +26,7 @@ if "products" not in st.sessions:
         }
     ]
 
-# ปุ่มเพิ่ม / ลบ รายการสินค้า
+# ปุ่มเพิ่มรายการสินค้า
 col_btn1, col_btn2 = st.columns([1, 4])
 with col_btn1:
     if st.button("➕ เพิ่มสินค้าชิ้นใหม่"):
@@ -90,7 +90,7 @@ for idx, p in enumerate(st.session_state.products):
     list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
-    # สร้างข้อมูลเริ่มต้นใส่ DataFrame ให้แก้ไขง่ายๆ
+    # สร้างข้อมูลเริ่มต้นใส่ DataFrame
     grid_data = []
     for opt1, opt2 in variations:
         var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
@@ -111,7 +111,7 @@ for idx, p in enumerate(st.session_state.products):
         df_var,
         column_config={
             "Variation": st.column_config.Column(disabled=True),
-            "Opt1": None,  # ซ่อนคอลัมน์ระบบ
+            "Opt1": None,
             "Opt2": None
         },
         hide_index=True,
@@ -143,7 +143,7 @@ if st.button("🚀 สร้างไฟล์ Excel รวมทุกสิน
         ws = wb.active
         ws.title = "Template"
 
-    start_row = 6  # บรรทัดแรกที่จะเริ่มเขียนข้อมูลใน Template
+    start_row = 6  # บรรทัดแรกใน Template
 
     for p_data in updated_products_data:
         cat_id = p_data["cat_id"]
@@ -157,7 +157,6 @@ if st.button("🚀 สร้างไฟล์ Excel รวมทุกสิน
         v1_imgs = p_data["v1_imgs"]
         df_vars = p_data["variations_table"]
 
-        # ดึงลิสต์ Option 1 เพื่อแมปกับรูปภาพ
         unique_v1 = df_vars["Opt1"].unique().tolist()
         v1_img_dict = {}
         for i, opt in enumerate(unique_v1):
@@ -166,13 +165,13 @@ if st.button("🚀 สร้างไฟล์ Excel รวมทุกสิน
         for idx, row in df_vars.iterrows():
             current_row = start_row
             
-            # 1. ข้อมูลพื้นฐานสินค้า (ลงบรรทัดแรกของสินค้านั้นๆ)
+            # 1. ข้อมูลพื้นฐานสินค้า
             ws.cell(row=current_row, column=1, value=cat_id)
             ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
             ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
-            ws.cell(row=current_row, column=10, value=p_sku) # Parent SKU
+            ws.cell(row=current_row, column=10, value=p_sku)
             
-            # 2. ข้อมูล Variation & Custom Price/Stock/SKU
+            # 2. ข้อมูล Variation
             ws.cell(row=current_row, column=11, value=v1_name)
             ws.cell(row=current_row, column=12, value=row["Opt1"])
             ws.cell(row=current_row, column=13, value=v1_img_dict.get(row["Opt1"], ""))
@@ -185,9 +184,9 @@ if st.button("🚀 สร้างไฟล์ Excel รวมทุกสิน
             ws.cell(row=current_row, column=17, value=row["Stock (ชิ้น)"])
             ws.cell(row=current_row, column=18, value=row["SKU"])
             
-            # 3. รูปภาพหลักและค่าจัดส่ง (ลงบรรทัดแรก)
+            # 3. รูปภาพหลักและค่าจัดส่ง
             if idx == 0:
-                ws.cell(row=current_row, column=21, value=cover_img) # Item Cover Image
+                ws.cell(row=current_row, column=21, value=cover_img)
                 ws.cell(row=current_row, column=30, value=weight)
                 ws.cell(row=current_row, column=34, value="On")
 
