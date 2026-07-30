@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import openpyxl
 import io
 import itertools
@@ -52,11 +53,24 @@ if submit:
 
     variations = list(itertools.product(list_v1, list_v2))
     
-    template_path = "Shopee_template.xlsx"
-    wb = openpyxl.load_workbook(template_path)
-    ws = wb["Template"]
+    # พยายามโหลด template ถ้ามี หากไฟล์เสียหรือไม่มีจะสร้างโครงสร้างใหม่ให้อัตโนมัติ
+    try:
+        wb = openpyxl.load_workbook("Shopee_template.xlsx")
+        ws = wb.active if "Template" not in wb.sheetnames else wb["Template"]
+    except Exception:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Template"
+        # สร้าง Header ตามโครงสร้างมาตรฐานของ Shopee
+        headers = [
+            "ps_category_id", "ps_product_name", "ps_product_description", "ps_brand", 
+            "ps_merchant_sku", "ps_parent_sku", "ps_variation_1_name", "ps_variation_1_option",
+            "ps_variation_1_image", "ps_variation_2_name", "ps_variation_2_option", 
+            "ps_price", "ps_stock", "ps_sku", "ps_item_cover_image", "ps_weight", "ps_shipping_channel_1"
+        ]
+        ws.append(headers)
 
-    start_row = 6 
+    start_row = ws.max_row + 1 if ws.max_row >= 5 else 2
 
     for idx, (opt1, opt2) in enumerate(variations):
         current_row = start_row + idx
@@ -65,24 +79,23 @@ if submit:
         ws.cell(row=current_row, column=1, value=category_id)
         ws.cell(row=current_row, column=2, value=product_name if idx == 0 else "")
         ws.cell(row=current_row, column=3, value=product_desc if idx == 0 else "")
-        ws.cell(row=current_row, column=9, value=parent_sku)
-        ws.cell(row=current_row, column=10, value=parent_sku)
+        ws.cell(row=current_row, column=4, value=brand)
+        ws.cell(row=current_row, column=6, value=parent_sku)
         
-        ws.cell(row=current_row, column=11, value=v1_name)
-        ws.cell(row=current_row, column=12, value=opt1)
+        ws.cell(row=current_row, column=7, value=v1_name)
+        ws.cell(row=current_row, column=8, value=opt1)
         
         if v2_name and opt2:
-            ws.cell(row=current_row, column=14, value=v2_name)
-            ws.cell(row=current_row, column=15, value=opt2)
+            ws.cell(row=current_row, column=10, value=v2_name)
+            ws.cell(row=current_row, column=11, value=opt2)
             
-        ws.cell(row=current_row, column=16, value=default_price)
-        ws.cell(row=current_row, column=17, value=default_stock)
-        ws.cell(row=current_row, column=18, value=f"{parent_sku}{sku_suffix}")
+        ws.cell(row=current_row, column=12, value=default_price)
+        ws.cell(row=current_row, column=13, value=default_stock)
+        ws.cell(row=current_row, column=14, value=f"{parent_sku}{sku_suffix}")
         
-        ws.cell(row=current_row, column=21, value=cover_image)
-        ws.cell(row=current_row, column=30, value=weight)
-        
-        ws.cell(row=current_row, column=34, value=channel_on)
+        ws.cell(row=current_row, column=15, value=cover_image)
+        ws.cell(row=current_row, column=16, value=weight)
+        ws.cell(row=current_row, column=17, value=channel_on)
 
     output = io.BytesIO()
     wb.save(output)
