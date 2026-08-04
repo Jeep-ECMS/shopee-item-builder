@@ -14,7 +14,7 @@ def fetch_base_rates():
     """
     ดึงอัตราแลกเปลี่ยน THB -> JPY และ PHP -> JPY แบบ Real-time
     """
-    default_rates = {"THB": 4.30, "PHP": 2.65}
+    default_rates = {"THB": 4.73, "PHP": 2.65}
     rates_out = {}
     
     # 1. ดึง THB -> JPY
@@ -101,12 +101,12 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
         margin_factor = 0.01
 
     if currency == "THB":
-        rate = rate_to_jpy if rate_to_jpy else 4.30
+        rate = rate_to_jpy if rate_to_jpy else 4.73
         
         # Column AB = W58 / $AB$1 (Buying Price THB)
         buying_price_thb = buying_price_jpy / rate if rate > 0 else 0
         
-        # Column T = SLS Fee
+        # Column T = SLS Fee (Lookup from Weight S)
         sls_fee = get_sls_shipping_fee_thb(weight_g)
         
         # Column AC = Transportation in JP (Fix 70 THB)
@@ -284,7 +284,7 @@ with col_cur:
     currency = st.selectbox(T["currency_select"], ["THB", "PHP"])
 
 with col_rate:
-    current_realtime_rate = realtime_rates.get(currency, 4.30 if currency == "THB" else 2.65)
+    current_realtime_rate = realtime_rates.get(currency, 4.73 if currency == "THB" else 2.65)
     rate_jpy = st.number_input(
         T["rate_label"].format(curr=currency), 
         value=current_realtime_rate, 
@@ -302,7 +302,7 @@ if "products" not in st.session_state:
             "parent_sku": "SHIRT-001",
             "brand": "No Brand",
             "product_name": T["default_pname"],
-            "weight": 100.0,
+            "weight": 300.0,
             "product_desc": T["default_pdesc"],
             "cover_image": "https://example.com/shirt_cover.jpg",
             "v1_name": T["default_v1_name"],
@@ -321,7 +321,7 @@ with col_btn1:
             "parent_sku": f"ITEM-{len(st.session_state.products)+1:03d}",
             "brand": "No Brand",
             "product_name": f"{T['product_num']} {len(st.session_state.products)+1}",
-            "weight": 100.0,
+            "weight": 300.0,
             "product_desc": "...",
             "cover_image": "https://example.com/cover.jpg",
             "v1_name": "Option",
@@ -444,6 +444,17 @@ for idx, p in enumerate(st.session_state.products):
 
     df_var = st.session_state[df_state_key]
 
+    # คำนวณราคา Selling Price (THB) ก่อนแสดงผล
+    df_var[price_key] = df_var.apply(
+        lambda row: calculate_net_price(
+            buying_price_jpy=row[cost_key],
+            weight_g=row[weight_key],
+            profit_rate_pct=row[profit_key],
+            currency=currency,
+            rate_to_jpy=rate_jpy
+        ), axis=1
+    )
+
     st.write(T["grid_title"])
     edited_df = st.data_editor(
         df_var,
@@ -460,16 +471,6 @@ for idx, p in enumerate(st.session_state.products):
         },
         hide_index=True,
         key=f"editor_{idx}"
-    )
-
-    edited_df[price_key] = edited_df.apply(
-        lambda row: calculate_net_price(
-            buying_price_jpy=row[cost_key],
-            weight_g=row[weight_key],
-            profit_rate_pct=row[profit_key],
-            currency=currency,
-            rate_to_jpy=rate_jpy
-        ), axis=1
     )
 
     st.session_state[df_state_key] = edited_df
