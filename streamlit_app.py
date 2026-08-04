@@ -85,15 +85,15 @@ def get_sls_shipping_fee_php(weight_g):
     extra_steps = ((weight_g - last_weight) + 49) // 50
     return last_fee + (extra_steps * 25)
 
-def calculate_net_price(buying_price_local, weight_g, profit_rate_pct=30.0, currency="THB", rate_to_jpy=None):
+def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, currency="THB", rate_to_jpy=None):
     try:
-        buying_price_local = float(buying_price_local)
+        buying_price_jpy = float(buying_price_jpy)
         weight_g = float(weight_g)
         profit_rate_pct = float(profit_rate_pct)
     except (ValueError, TypeError):
         return 0
 
-    if buying_price_local <= 0 or weight_g <= 0:
+    if buying_price_jpy <= 0 or weight_g <= 0:
         return 0
 
     margin_factor = 1.0 - (profit_rate_pct / 100.0)
@@ -102,22 +102,19 @@ def calculate_net_price(buying_price_local, weight_g, profit_rate_pct=30.0, curr
 
     if currency == "THB":
         rate = rate_to_jpy if rate_to_jpy else 4.30
-        buying_price_jpy = buying_price_local * rate
+        buying_price_thb = buying_price_jpy / rate if rate > 0 else 0
         transportation_jp_thb = 70.0
         sls_fee = get_sls_shipping_fee_thb(weight_g)
         
-        # แปลงส่วนต่างเพิ่มเติมกลับเป็น THB เพื่อหาคำตอบ Selling Price
-        buying_price_thb = buying_price_jpy / rate if rate > 0 else buying_price_local
         net_price = (sls_fee + buying_price_thb + transportation_jp_thb) / margin_factor
         return round(net_price)
 
     elif currency == "PHP":
         rate = rate_to_jpy if rate_to_jpy else 2.65
-        buying_price_jpy = buying_price_local * rate
+        buying_price_php = buying_price_jpy / rate if rate > 0 else 0
         transportation_jp_php = 116.0
         sls_fee = get_sls_shipping_fee_php(weight_g)
         
-        buying_price_php = buying_price_jpy / rate if rate > 0 else buying_price_local
         base_price = (sls_fee + buying_price_php + transportation_jp_php) / margin_factor
         cif_check = (base_price * 1.01) + (1369.0 * (weight_g / 1000.0))
         
@@ -157,8 +154,8 @@ LANG_TEXTS = {
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
         "batch_title": "⚡ ตั้งค่าด่วน (นำค่านี้ไปใส่ให้ทุก Variation พร้อมกัน):",
         "btn_batch_apply": "⚡ นำไปใช้กับทุก Variation",
-        "grid_title": "💰 ตารางกำหนดราคาซื้อ, น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
-        "cost_col": "Buying Price ({curr})",
+        "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
+        "cost_col": "Buying Price (JPY)",
         "weight_col": "Weight (g)",
         "profit_col": "Profit Rate (%)",
         "price_col": "Selling Price",
@@ -196,8 +193,8 @@ LANG_TEXTS = {
         "v2_opts": "Variation 2 Options (comma separated)",
         "batch_title": "⚡ Quick Batch Setup (Apply values to all variations at once):",
         "btn_batch_apply": "⚡ Apply to All Variations",
-        "grid_title": "💰 Buying Price, Weight (g), Profit Rate (%), Stock & Auto Price Table:",
-        "cost_col": "Buying Price ({curr})",
+        "grid_title": "💰 Buying Price (JPY), Weight (g), Profit Rate (%), Stock & Auto Price Table:",
+        "cost_col": "Buying Price (JPY)",
         "weight_col": "Weight (g)",
         "profit_col": "Profit Rate (%)",
         "price_col": "Selling Price",
@@ -220,7 +217,7 @@ LANG_TEXTS = {
         "rate_info": "💡 最新のリアルタイム為替レートを自動取得中",
         "add_product": "➕ 新しい商品を追加",
         "del_product": "🗑️ この商品を削除",
-        "product_num": "🛒 商品 #",
+        "product_num": "🛒 สินค้า #",
         "cat_id": "カテゴリーID",
         "parent_sku": "親SKU (Parent SKU)",
         "brand": "ブランド (Brand)",
@@ -235,8 +232,8 @@ LANG_TEXTS = {
         "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
         "batch_title": "⚡ 一括設定 (全バリエーションに一括適用):",
         "btn_batch_apply": "⚡ 全バリエーションに適用",
-        "grid_title": "💰 仕入れ値・重量(g)・利益率(%)・在庫・自動計算販売価格:",
-        "cost_col": "Buying Price ({curr})",
+        "grid_title": "💰 仕入れ値(JPY)・重量(g)・利益率(%)・在庫・自動計算販売価格:",
+        "cost_col": "Buying Price (JPY)",
         "weight_col": "Weight (g)",
         "profit_col": "Profit Rate (%)",
         "price_col": "Selling Price",
@@ -371,7 +368,7 @@ for idx, p in enumerate(st.session_state.products):
     b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns([2, 2, 2, 2, 3])
     
     with b_col1:
-        batch_cost = st.number_input(T["cost_col"].format(curr=currency), value=250, step=10, key=f"b_cost_{idx}")
+        batch_cost = st.number_input(T["cost_col"], value=1000, step=100, key=f"b_cost_{idx}")
     with b_col2:
         batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=10.0, format="%.1f", key=f"b_weight_{idx}")
     with b_col3:
@@ -385,7 +382,7 @@ for idx, p in enumerate(st.session_state.products):
 
     df_state_key = f"df_data_{idx}"
     
-    cost_key = "cost_local"
+    cost_key = "cost_jpy"
     weight_key = "weight_g"
     profit_key = "profit_rate"
     price_key = "selling_price"
@@ -400,7 +397,7 @@ for idx, p in enumerate(st.session_state.products):
             grid_data.append({
                 "Variation": var_title,
                 "SKU": f"{p_sku}{sku_suffix}",
-                cost_key: int(batch_cost) if apply_batch else 250,
+                cost_key: int(batch_cost) if apply_batch else 1000,
                 weight_key: float(batch_weight) if apply_batch else float(default_weight),
                 profit_key: float(batch_profit) if apply_batch else 20.0,
                 price_key: 0,
@@ -418,12 +415,12 @@ for idx, p in enumerate(st.session_state.products):
             
             match = df_existing[df_existing["Variation"] == var_title]
             if not match.empty:
-                c_val = match.iloc[0].get(cost_key, 250)
+                c_val = match.iloc[0].get(cost_key, 1000)
                 w_val = match.iloc[0].get(weight_key, float(default_weight))
                 p_val = match.iloc[0].get(profit_key, 20.0)
                 s_val = match.iloc[0].get(stock_key, 5)
             else:
-                c_val, w_val, p_val, s_val = 250, float(default_weight), 20.0, 5
+                c_val, w_val, p_val, s_val = 1000, float(default_weight), 20.0, 5
 
             new_grid_data.append({
                 "Variation": var_title,
@@ -446,7 +443,7 @@ for idx, p in enumerate(st.session_state.products):
         column_config={
             "Variation": st.column_config.Column(disabled=True),
             "SKU": st.column_config.Column(disabled=True),
-            cost_key: st.column_config.NumberColumn(T["cost_col"].format(curr=currency), min_value=0, format="%d " + currency),
+            cost_key: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
             weight_key: st.column_config.NumberColumn(T["weight_col"], min_value=1.0, format="%.1f g"),
             profit_key: st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
             price_key: st.column_config.NumberColumn(f"{T['price_col']} ({currency})", disabled=True, format="%d " + currency),
@@ -460,7 +457,7 @@ for idx, p in enumerate(st.session_state.products):
 
     edited_df[price_key] = edited_df.apply(
         lambda row: calculate_net_price(
-            buying_price_local=row[cost_key],
+            buying_price_jpy=row[cost_key],
             weight_g=row[weight_key],
             profit_rate_pct=row[profit_key],
             currency=currency,
