@@ -2,7 +2,6 @@ import streamlit as st
 import openpyxl
 import io
 import itertools
-import math
 import pandas as pd
 import urllib.request
 import json
@@ -12,7 +11,7 @@ st.set_page_config(page_title="Shopee Auto Price & Mass Upload Builder", layout=
 # --- 0. API ดึงอัตราแลกเปลี่ยน REALTIME ---
 @st.cache_data(ttl=3600)
 def fetch_jpy_rates():
-    default_rates = {"THB": 4.868196, "PHP": 2.590111}
+    default_rates = {"THB": 4.724, "PHP": 2.590111}
     try:
         url = "https://open.er-api.com/v6/latest/JPY"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -24,78 +23,103 @@ def fetch_jpy_rates():
             
             if thb_rate and php_rate:
                 return {
-                    "THB": round(1 / thb_rate, 6),
-                    "PHP": round(1 / php_rate, 6)
+                    "THB": round(thb_rate, 4),
+                    "PHP": round(php_rate, 6)
                 }
     except Exception:
         pass
     return default_rates
 
 
-# --- 1. LOGIC การคำนวณค่าขนส่ง SLS, Customs & PROFIT RATE ---
+# --- 1. ตาราง SLS TRANSPORTATION ACCORDING TO YOUR SHEET ---
 
 SLS_RATES_THB = [
-    (100, 52), (200, 76), (300, 100), (400, 124), (500, 148),
-    (600, 172), (700, 196), (800, 220), (900, 244), (1000, 268),
-    (1500, 388), (2000, 508), (2500, 628), (3000, 748), (3500, 868), (4000, 988)
+    (100, 93), (200, 105), (300, 129), (400, 153), (500, 177),
+    (600, 200), (700, 230), (800, 250), (900, 270), (1000, 300),
+    (1100, 321), (1500, 388), (2000, 508), (2100, 550), (2200, 585),
+    (2300, 595), (2400, 615), (2500, 628), (3000, 748), (3500, 868),
+    (4000, 988), (4500, 1108), (5000, 1228), (5500, 1348), (6000, 1468),
+    (6500, 1588), (7000, 1708), (7500, 1828), (8000, 1948), (8500, 2068),
+    (9000, 2188), (9500, 2308), (10000, 2428), (10500, 2548), (11000, 2668),
+    (11500, 2788), (12000, 2908), (12500, 3028), (13000, 3148), (13500, 3268),
+    (14000, 3388), (14500, 3508), (15000, 3628), (15500, 3748), (16000, 3868),
+    (16500, 3988), (17000, 4108), (17500, 4228), (18000, 4348), (18500, 4468),
+    (19000, 4588), (19500, 4708), (20000, 4828)
+]
+
+SLS_RATES_PHP = [
+    (50, 76), (100, 101), (150, 126), (200, 151), (250, 176),
+    (300, 201), (350, 226), (400, 251), (450, 276), (500, 301),
+    (550, 326), (600, 351), (650, 376), (700, 401), (750, 426),
+    (800, 451), (850, 476), (900, 501), (950, 526), (1000, 551),
+    (1050, 576), (1100, 601), (1150, 626), (1200, 651), (1250, 676),
+    (1300, 701), (1350, 726), (1400, 751), (1450, 776), (1500, 801),
+    (1550, 826)
 ]
 
 def get_sls_shipping_fee_thb(weight_g):
     for max_weight, fee in SLS_RATES_THB:
         if weight_g <= max_weight:
             return fee
-    return 988 + math.ceil((weight_g - 4000) / 500) * 120
+    # คำนวณส่วนเกินหลังจาก 20kg
+    last_weight, last_fee = SLS_RATES_THB[-1]
+    extra_steps = ((weight_g - last_weight) + 499) // 500
+    return last_fee + (extra_steps * 120)
 
 def get_sls_shipping_fee_php(weight_g):
-    if weight_g <= 50:
-        normal_fee = 6
-    else:
-        steps = math.ceil((weight_g - 50) / 50)
-        normal_fee = 6 + (steps * 25)
-    esf_zone_a = 50
-    return esf_zone_a + normal_fee
+    for max_weight, fee in SLS_RATES_PHP:
+        if weight_g <= max_weight:
+            return fee
+    # คำนวณส่วนเกินหลังจาก 1550g (สเต็ปละ 50g เพิ่ม 25 PHP)
+    last_weight, last_fee = SLS_RATES_PHP[-1]
+    extra_steps = ((weight_g - last_weight) + 49) // 50
+    return last_fee + (extra_steps * 25)
 
-def calculate_net_price(buying_price_jpy, weight_kg, profit_rate_pct=35.0, currency="THB", rate_jpy=None):
+def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, currency="THB", rate_jpy=None):
     try:
         buying_price_jpy = float(buying_price_jpy)
-        weight_g = float(weight_kg) * 1000
+        weight_g = float(weight_g)
         profit_rate_pct = float(profit_rate_pct)
     except (ValueError, TypeError):
         return 0
 
-    if buying_price_jpy <= 0:
+    if buying_price_jpy <= 0 or weight_g <= 0:
         return 0
-    if weight_g <= 0:
-        weight_g = 100
 
+    # Margin factor (0.7 เมื่อ profit rate = 30%)
     margin_factor = 1.0 - (profit_rate_pct / 100.0)
     if margin_factor <= 0:
         margin_factor = 0.01
 
     if currency == "THB":
-        rate = rate_jpy if rate_jpy else 4.868196
-        buying_price_thb = buying_price_jpy / rate
-        transportation_jp_thb = 70
-        sls_fee = get_sls_shipping_fee_thb(weight_g)
+        rate = rate_jpy if rate_jpy else 4.724
+        buying_price_thb = buying_price_jpy / rate       # Column AB
+        transportation_jp_thb = 70.0                      # Column AC (Fix 70 THB)
+        sls_fee = get_sls_shipping_fee_thb(weight_g)      # Column T (SLS)
+        
+        # สูตร TH: (T79+AB79+AC79)/0.7
         net_price = (sls_fee + buying_price_thb + transportation_jp_thb) / margin_factor
         return round(net_price)
 
     elif currency == "PHP":
         rate = rate_jpy if rate_jpy else 2.590111
-        buying_price_php = buying_price_jpy / rate
-        transportation_jp_php = 300 / rate
-        sls_fee = get_sls_shipping_fee_php(weight_g)
+        buying_price_php = buying_price_jpy / rate       # Column AD
+        transportation_jp_php = 116.0                     # Column AE (Fix 116 PHP)
+        sls_fee = get_sls_shipping_fee_php(weight_g)      # Column T (SLS)
         
-        temp_price = (sls_fee + buying_price_php + transportation_jp_php) / margin_factor
-        cif_value = temp_price * 1.01 + (1369 * (weight_g / 1000))
+        # คำนวณราคาแบบปกติก่อนเพื่อเช็คเงื่อนไข CIF
+        base_price = (sls_fee + buying_price_php + transportation_jp_php) / margin_factor
         
-        if cif_value >= 10000:
-            customs_factor = margin_factor - 0.1212
-            if customs_factor <= 0:
-                customs_factor = 0.01
-            net_price = (sls_fee + (1369 * (weight_g / 1000) * 0.12) + buying_price_php + transportation_jp_php) / customs_factor
+        # สูตร CIF: (T3+AD3+AE3)/0.7*1.01+1369*(S3/1000)
+        cif_check = (base_price * 1.01) + (1369.0 * (weight_g / 1000.0))
+        
+        if cif_check >= 10000:
+            # สูตร PH >= 10000: (T3+1369*(S3/1000)*0.12+AD3+AE3)/0.5788
+            custom_tax_part = 1369.0 * (weight_g / 1000.0) * 0.12
+            net_price = (sls_fee + custom_tax_part + buying_price_php + transportation_jp_php) / 0.5788
         else:
-            net_price = temp_price
+            # สูตร PH < 10000: (T3+AD3+AE3)/0.7
+            net_price = base_price
             
         return round(net_price)
 
@@ -108,7 +132,7 @@ LANG_TEXTS = {
         "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ",
         "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Exchange Rate)",
         "currency_select": "เลือกตลาดเป้าหมาย",
-        "rate_label": "อัตราแลกเปลี่ยน Realtime (JPY)",
+        "rate_label": "อัตราแลกเปลี่ยน (JPY / AB1 / AD1)",
         "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
         "del_product": "🗑️ ลบสินค้านี้",
         "product_num": "🛒 สินค้าชิ้นที่",
@@ -116,7 +140,7 @@ LANG_TEXTS = {
         "parent_sku": "Parent SKU / รหัสอ้างอิงหลัก",
         "brand": "แบรนด์ (Brand)",
         "p_name": "ชื่อสินค้า",
-        "weight": "น้ำหนักสินค้าเริ่มต้น (kg)",
+        "weight": "น้ำหนักสินค้าเริ่มต้น (g)",
         "p_desc": "รายละเอียดสินค้า",
         "cover_img": "URL รูปภาพปกหลัก (Cover Image)",
         "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
@@ -126,11 +150,11 @@ LANG_TEXTS = {
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
         "batch_title": "⚡ ตั้งค่าด่วน (นำค่านี้ไปใส่ให้ทุก Variation พร้อมกัน):",
         "btn_batch_apply": "⚡ นำไปใช้กับทุก Variation",
-        "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (kg), Profit Rate (%), สต๊อก และราคาขาย:",
-        "cost_col": "ราคาซื้อ (JPY)",
-        "weight_col": "น้ำหนัก (kg)",
+        "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
+        "cost_col": "Buying Price (JPY)",
+        "weight_col": "Weight (g)",
         "profit_col": "Profit Rate (%)",
-        "price_col": "ราคาขายอัตโนมัติ",
+        "price_col": "Selling Price",
         "stock_col": "Stock (ชิ้น)",
         "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
         "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
@@ -146,7 +170,7 @@ LANG_TEXTS = {
         "title": "📦 Shopee Mass Upload Generator & Price Calculator",
         "calc_setting": "⚙️ Price Calculation Settings",
         "currency_select": "Target Market",
-        "rate_label": "Realtime Exchange Rate (JPY)",
+        "rate_label": "Exchange Rate (JPY)",
         "add_product": "➕ Add New Product",
         "del_product": "🗑️ Delete Product",
         "product_num": "🛒 Product #",
@@ -154,7 +178,7 @@ LANG_TEXTS = {
         "parent_sku": "Parent SKU",
         "brand": "Brand",
         "p_name": "Product Name",
-        "weight": "Default Weight (kg)",
+        "weight": "Default Weight (g)",
         "p_desc": "Product Description",
         "cover_img": "Cover Image URL",
         "v1_name": "Variation 1 Name (e.g., Color)",
@@ -164,11 +188,11 @@ LANG_TEXTS = {
         "v2_opts": "Variation 2 Options (comma separated)",
         "batch_title": "⚡ Quick Batch Setup (Apply values to all variations at once):",
         "btn_batch_apply": "⚡ Apply to All Variations",
-        "grid_title": "💰 Buying Price (JPY), Weight (kg), Profit Rate (%), Stock & Auto Price Table:",
+        "grid_title": "💰 Buying Price (JPY), Weight (g), Profit Rate (%), Stock & Auto Price Table:",
         "cost_col": "Buying Price (JPY)",
-        "weight_col": "Weight (kg)",
+        "weight_col": "Weight (g)",
         "profit_col": "Profit Rate (%)",
-        "price_col": "Auto Selling Price",
+        "price_col": "Selling Price",
         "stock_col": "Stock",
         "btn_generate": "🚀 Generate Combined Shopee Excel File",
         "success_msg": "✅ Successfully generated! Total {count} product(s).",
@@ -184,7 +208,7 @@ LANG_TEXTS = {
         "title": "📦 Shopee 一括出品ファイル生成 & 自動価格計算ツール",
         "calc_setting": "⚙️ 価格計算設定 (ターゲット市場 & 為替)",
         "currency_select": "ターゲット市場",
-        "rate_label": "リアルタイム為替レート (JPY)",
+        "rate_label": "為替レート (JPY)",
         "add_product": "➕ 新しい商品を追加",
         "del_product": "🗑️ この商品を削除",
         "product_num": "🛒 商品 #",
@@ -192,7 +216,7 @@ LANG_TEXTS = {
         "parent_sku": "親SKU (Parent SKU)",
         "brand": "ブランド (Brand)",
         "p_name": "商品名",
-        "weight": "デフォルト重量 (kg)",
+        "weight": "デフォルト重量 (g)",
         "p_desc": "商品説明",
         "cover_img": "メインカバー画像URL",
         "v1_name": "バリエーション1名称 (例: 色)",
@@ -202,11 +226,11 @@ LANG_TEXTS = {
         "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
         "batch_title": "⚡ 一括設定 (全バリエーションに一括適用):",
         "btn_batch_apply": "⚡ 全バリエーションに適用",
-        "grid_title": "💰 仕入れ値(JPY)・重量(kg)・利益率(%)・在庫・自動計算販売価格:",
-        "cost_col": "仕入れ値 (JPY)",
-        "weight_col": "重量 (kg)",
-        "profit_col": "利益率 (%)",
-        "price_col": "自動計算販売価格",
+        "grid_title": "💰 仕入れ値(JPY)・重量(g)・利益率(%)・在庫・自動計算販売価格:",
+        "cost_col": "Buying Price (JPY)",
+        "weight_col": "Weight (g)",
+        "profit_col": "Profit Rate (%)",
+        "price_col": "Selling Price",
         "stock_col": "在庫数",
         "btn_generate": "🚀 全商品まとめてShopee用Excelファイルを生成",
         "success_msg": "✅ 生成成功！ 合計 {count} 件の商品。",
@@ -220,7 +244,7 @@ LANG_TEXTS = {
     }
 }
 
-# --- 1.1 DROPDOWN ภาษาใน SIDEBAR ---
+# --- 2.1 DROPDOWN ภาษาใน SIDEBAR ---
 st.sidebar.title("🌐 Language Settings")
 selected_lang = st.sidebar.selectbox(
     "Choose Language / 言語選択",
@@ -249,7 +273,7 @@ with col_cur:
     currency = st.selectbox(T["currency_select"], ["THB", "PHP"])
 
 with col_rate:
-    current_realtime_rate = realtime_rates.get(currency, 4.868196 if currency == "THB" else 2.590111)
+    current_realtime_rate = realtime_rates.get(currency, 4.724 if currency == "THB" else 2.590111)
     rate_jpy = st.number_input(f"{T['rate_label']} ({currency}/JPY)", value=current_realtime_rate, format="%.6f")
 
 st.markdown("---")
@@ -261,7 +285,7 @@ if "products" not in st.session_state:
             "parent_sku": "SHIRT-001",
             "brand": "No Brand",
             "product_name": T["default_pname"],
-            "weight": 0.1,
+            "weight": 100.0,
             "product_desc": T["default_pdesc"],
             "cover_image": "https://example.com/shirt_cover.jpg",
             "v1_name": T["default_v1_name"],
@@ -280,7 +304,7 @@ with col_btn1:
             "parent_sku": f"ITEM-{len(st.session_state.products)+1:03d}",
             "brand": "No Brand",
             "product_name": f"{T['product_num']} {len(st.session_state.products)+1}",
-            "weight": 0.1,
+            "weight": 100.0,
             "product_desc": "...",
             "cover_image": "https://example.com/cover.jpg",
             "v1_name": "Option",
@@ -312,7 +336,7 @@ for idx, p in enumerate(st.session_state.products):
         brand = st.text_input(T["brand"], value=p["brand"], key=f"brand_{idx}")
     with c2:
         p_name = st.text_input(T["p_name"], value=p["product_name"], key=f"name_{idx}")
-        default_weight = st.number_input(T["weight"], value=float(p["weight"]), step=0.05, format="%.2f", key=f"w_{idx}")
+        default_weight = st.number_input(T["weight"], value=float(p["weight"]), step=10.0, format="%.1f", key=f"w_{idx}")
     with c3:
         p_desc = st.text_area(T["p_desc"], value=p["product_desc"], key=f"desc_{idx}")
 
@@ -332,30 +356,27 @@ for idx, p in enumerate(st.session_state.products):
     list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
-    # --- 3. BATCH APPLY SECTION (กำหนดค่าด่วนทุก Variation) ---
+    # --- 3. BATCH APPLY SECTION ---
     st.write(T["batch_title"])
     b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns([2, 2, 2, 2, 3])
     
     with b_col1:
-        batch_cost = st.number_input(T["cost_col"], value=1000, step=100, key=f"b_cost_{idx}")
+        batch_cost = st.number_input(T["cost_col"], value=1417, step=100, key=f"b_cost_{idx}")
     with b_col2:
-        batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=0.05, format="%.2f", key=f"b_weight_{idx}")
+        batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=10.0, format="%.1f", key=f"b_weight_{idx}")
     with b_col3:
-        batch_profit = st.number_input(T["profit_col"], value=35.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
+        batch_profit = st.number_input(T["profit_col"], value=30.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
     with b_col4:
         batch_stock = st.number_input(T["stock_col"], value=50, step=5, key=f"b_stock_{idx}")
     with b_col5:
-        st.write("") # Spacer
-        st.write("") # Spacer
+        st.write("") 
+        st.write("") 
         apply_batch = st.button(T["btn_batch_apply"], key=f"btn_batch_{idx}")
 
-    # คีย์อ้างอิง Session State สำหรับ DataFrame ตาราง Variation
     df_state_key = f"df_data_{idx}"
-
     grid_data = []
     price_col_label = f"{T['price_col']} ({currency})"
 
-    # สร้างโครงตารางถ้ายังไม่มีใน Session State
     if df_state_key not in st.session_state or apply_batch:
         for opt1, opt2 in variations:
             var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
@@ -364,9 +385,9 @@ for idx, p in enumerate(st.session_state.products):
             grid_data.append({
                 "Variation": var_title,
                 "SKU": f"{p_sku}{sku_suffix}",
-                T["cost_col"]: int(batch_cost) if apply_batch else 1000,
+                T["cost_col"]: int(batch_cost) if apply_batch else 1417,
                 T["weight_col"]: float(batch_weight) if apply_batch else float(default_weight),
-                T["profit_col"]: float(batch_profit) if apply_batch else 35.0,
+                T["profit_col"]: float(batch_profit) if apply_batch else 30.0,
                 price_col_label: 0,
                 T["stock_col"]: int(batch_stock) if apply_batch else 50,
                 "Opt1": opt1,
@@ -374,14 +395,12 @@ for idx, p in enumerate(st.session_state.products):
             })
         st.session_state[df_state_key] = pd.DataFrame(grid_data)
     else:
-        # อัปเดตโครงสร้าง SKU / Variation หากมีการแก้ไขชื่อ Option ด้านบน
         df_existing = st.session_state[df_state_key]
         new_grid_data = []
         for opt1, opt2 in variations:
             var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
             sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
             
-            # ดึงค่าเดิมถ้ามี
             match = df_existing[df_existing["Variation"] == var_title]
             if not match.empty:
                 c_val = match.iloc[0][T["cost_col"]]
@@ -389,7 +408,7 @@ for idx, p in enumerate(st.session_state.products):
                 p_val = match.iloc[0][T["profit_col"]]
                 s_val = match.iloc[0][T["stock_col"]]
             else:
-                c_val, w_val, p_val, s_val = 1000, float(default_weight), 35.0, 50
+                c_val, w_val, p_val, s_val = 1417, float(default_weight), 30.0, 50
 
             new_grid_data.append({
                 "Variation": var_title,
@@ -406,7 +425,6 @@ for idx, p in enumerate(st.session_state.products):
 
     df_var = st.session_state[df_state_key]
 
-    # แสดง Data Editor
     st.write(T["grid_title"])
     edited_df = st.data_editor(
         df_var,
@@ -414,7 +432,7 @@ for idx, p in enumerate(st.session_state.products):
             "Variation": st.column_config.Column(disabled=True),
             "SKU": st.column_config.Column(disabled=True),
             T["cost_col"]: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
-            T["weight_col"]: st.column_config.NumberColumn(T["weight_col"], min_value=0.01, format="%.2f kg"),
+            T["weight_col"]: st.column_config.NumberColumn(T["weight_col"], min_value=1.0, format="%.1f g"),
             T["profit_col"]: st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
             price_col_label: st.column_config.NumberColumn(price_col_label, disabled=True, format="%d " + currency),
             T["stock_col"]: st.column_config.NumberColumn(T["stock_col"], min_value=0, format="%d"),
@@ -425,11 +443,11 @@ for idx, p in enumerate(st.session_state.products):
         key=f"editor_{idx}"
     )
 
-    # คำนวณราคาขายสุทธิแบบ Auto Real-time
+    # คำนวณราคาขายสุทธิ (Selling Price) ตามสูตรเป๊ะๆ
     edited_df[price_col_label] = edited_df.apply(
         lambda row: calculate_net_price(
             buying_price_jpy=row[T["cost_col"]],
-            weight_kg=row[T["weight_col"]],
+            weight_g=row[T["weight_col"]],
             profit_rate_pct=row[T["profit_col"]],
             currency=currency,
             rate_jpy=rate_jpy
@@ -471,7 +489,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         p_sku = p_data["p_sku"]
         p_name = p_data["p_name"]
         p_desc = p_data["p_desc"]
-        default_weight = p_data["weight"]
+        default_weight = p_data["weight"] / 1000.0  # แปลง g เป็น kg สำหรับส่งออก Shopee
         cover_img = p_data["cover_img"]
         v1_name = p_data["v1_name"]
         v2_name = p_data["v2_name"]
@@ -506,7 +524,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             
             if idx == 0:
                 ws.cell(row=current_row, column=21, value=cover_img)
-                ws.cell(row=current_row, column=30, value=row[T["weight_col"]])
+                ws.cell(row=current_row, column=30, value=row[T["weight_col"]] / 1000.0)
                 ws.cell(row=current_row, column=34, value="On")
 
             start_row += 1
