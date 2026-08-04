@@ -14,7 +14,7 @@ def fetch_base_rates():
     """
     ดึงอัตราแลกเปลี่ยน THB -> JPY และ PHP -> JPY แบบ Real-time
     """
-    default_rates = {"THB": 4.30, "PHP": 2.65} # ค่าสำรองกรณี API ไม่ตอบสนอง
+    default_rates = {"THB": 4.30, "PHP": 2.65}
     rates_out = {}
     
     # 1. ดึง THB -> JPY
@@ -102,10 +102,17 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
 
     if currency == "THB":
         rate = rate_to_jpy if rate_to_jpy else 4.30
+        
+        # Column AB = W58 / $AB$1 (Buying Price THB)
         buying_price_thb = buying_price_jpy / rate if rate > 0 else 0
-        transportation_jp_thb = 70.0
+        
+        # Column T = SLS Fee
         sls_fee = get_sls_shipping_fee_thb(weight_g)
         
+        # Column AC = Transportation in JP (Fix 70 THB)
+        transportation_jp_thb = 70.0
+        
+        # Column R = (T79 + AB79 + AC79) / Profit Factor (0.7)
         net_price = (sls_fee + buying_price_thb + transportation_jp_thb) / margin_factor
         return round(net_price)
 
@@ -217,7 +224,7 @@ LANG_TEXTS = {
         "rate_info": "💡 最新のリアルタイム為替レートを自動取得中",
         "add_product": "➕ 新しい商品を追加",
         "del_product": "🗑️ この商品を削除",
-        "product_num": "🛒 สินค้า #",
+        "product_num": "🛒 商品 #",
         "cat_id": "カテゴリーID",
         "parent_sku": "親SKU (Parent SKU)",
         "brand": "ブランド (Brand)",
@@ -372,7 +379,7 @@ for idx, p in enumerate(st.session_state.products):
     with b_col2:
         batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=10.0, format="%.1f", key=f"b_weight_{idx}")
     with b_col3:
-        batch_profit = st.number_input(T["profit_col"], value=20.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
+        batch_profit = st.number_input(T["profit_col"], value=30.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
     with b_col4:
         batch_stock = st.number_input(T["stock_col"], value=5, step=1, key=f"b_stock_{idx}")
     with b_col5:
@@ -399,7 +406,7 @@ for idx, p in enumerate(st.session_state.products):
                 "SKU": f"{p_sku}{sku_suffix}",
                 cost_key: int(batch_cost) if apply_batch else 1000,
                 weight_key: float(batch_weight) if apply_batch else float(default_weight),
-                profit_key: float(batch_profit) if apply_batch else 20.0,
+                profit_key: float(batch_profit) if apply_batch else 30.0,
                 price_key: 0,
                 stock_key: int(batch_stock) if apply_batch else 5,
                 "Opt1": opt1,
@@ -417,10 +424,10 @@ for idx, p in enumerate(st.session_state.products):
             if not match.empty:
                 c_val = match.iloc[0].get(cost_key, 1000)
                 w_val = match.iloc[0].get(weight_key, float(default_weight))
-                p_val = match.iloc[0].get(profit_key, 20.0)
+                p_val = match.iloc[0].get(profit_key, 30.0)
                 s_val = match.iloc[0].get(stock_key, 5)
             else:
-                c_val, w_val, p_val, s_val = 1000, float(default_weight), 20.0, 5
+                c_val, w_val, p_val, s_val = 1000, float(default_weight), 30.0, 5
 
             new_grid_data.append({
                 "Variation": var_title,
