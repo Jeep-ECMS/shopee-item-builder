@@ -106,7 +106,7 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
         # Column AB = W58 / $AB$1 (Buying Price THB)
         buying_price_thb = buying_price_jpy / rate if rate > 0 else 0
         
-        # Column T = SLS Fee (Lookup from Weight S)
+        # Column T = SLS Fee
         sls_fee = get_sls_shipping_fee_thb(weight_g)
         
         # Column AC = Transportation in JP (Fix 70 THB)
@@ -159,8 +159,8 @@ LANG_TEXTS = {
         "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
         "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
-        "batch_title": "⚡ ตั้งค่าด่วน (นำค่านี้ไปใส่ให้ทุก Variation พร้อมกัน):",
-        "btn_batch_apply": "⚡ นำไปใช้กับทุก Variation",
+        "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
+        "btn_apply": "⚡ นำไปใช้",
         "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
         "cost_col": "Buying Price (JPY)",
         "weight_col": "Weight (g)",
@@ -198,8 +198,8 @@ LANG_TEXTS = {
         "v1_imgs": "Variation 1 Image URLs (comma separated)",
         "v2_name": "Variation 2 Name (e.g., Size) [Optional]",
         "v2_opts": "Variation 2 Options (comma separated)",
-        "batch_title": "⚡ Quick Batch Setup (Apply values to all variations at once):",
-        "btn_batch_apply": "⚡ Apply to All Variations",
+        "batch_title": "⚡ Quick Setup (Apply individual value to all variations):",
+        "btn_apply": "⚡ Apply",
         "grid_title": "💰 Buying Price (JPY), Weight (g), Profit Rate (%), Stock & Auto Price Table:",
         "cost_col": "Buying Price (JPY)",
         "weight_col": "Weight (g)",
@@ -237,8 +237,8 @@ LANG_TEXTS = {
         "v1_imgs": "バリエーション1の画像URL (カンマ区切り)",
         "v2_name": "バリエーション2名称 (例: サイズ) [任意]",
         "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
-        "batch_title": "⚡ 一括設定 (全バリエーションに一括適用):",
-        "btn_batch_apply": "⚡ 全バリエーションに適用",
+        "batch_title": "⚡ 個別一括設定 (全バリエーションに適用):",
+        "btn_apply": "⚡ 適用",
         "grid_title": "💰 仕入れ値(JPY)・重量(g)・利益率(%)・在庫・自動計算販売価格:",
         "cost_col": "Buying Price (JPY)",
         "weight_col": "Weight (g)",
@@ -371,21 +371,25 @@ for idx, p in enumerate(st.session_state.products):
     list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
+    # --- ส่วนการตั้งค่าด่วน แยกปุ่มแต่ละช่องอย่างเป็นอิสระ ---
     st.write(T["batch_title"])
-    b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns([2, 2, 2, 2, 3])
+    b_col1, b_col2, b_col3, b_col4 = st.columns(4)
     
     with b_col1:
         batch_cost = st.number_input(T["cost_col"], value=1000, step=100, key=f"b_cost_{idx}")
+        apply_cost = st.button(f"{T['btn_apply']} {T['cost_col']}", key=f"btn_apply_cost_{idx}")
+        
     with b_col2:
         batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=10.0, format="%.1f", key=f"b_weight_{idx}")
+        apply_weight = st.button(f"{T['btn_apply']} {T['weight_col']}", key=f"btn_apply_weight_{idx}")
+        
     with b_col3:
         batch_profit = st.number_input(T["profit_col"], value=30.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
+        apply_profit = st.button(f"{T['btn_apply']} {T['profit_col']}", key=f"btn_apply_profit_{idx}")
+        
     with b_col4:
         batch_stock = st.number_input(T["stock_col"], value=5, step=1, key=f"b_stock_{idx}")
-    with b_col5:
-        st.write("") 
-        st.write("") 
-        apply_batch = st.button(T["btn_batch_apply"], key=f"btn_batch_{idx}")
+        apply_stock = st.button(f"{T['btn_apply']} {T['stock_col']}", key=f"btn_apply_stock_{idx}")
 
     df_state_key = f"df_data_{idx}"
     
@@ -395,7 +399,8 @@ for idx, p in enumerate(st.session_state.products):
     price_key = "selling_price"
     stock_key = "stock"
 
-    if df_state_key not in st.session_state or apply_batch:
+    # สร้างหรืออัปเดตตารางตามปุ่มที่ถูกกด
+    if df_state_key not in st.session_state:
         grid_data = []
         for opt1, opt2 in variations:
             var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
@@ -404,11 +409,11 @@ for idx, p in enumerate(st.session_state.products):
             grid_data.append({
                 "Variation": var_title,
                 "SKU": f"{p_sku}{sku_suffix}",
-                cost_key: int(batch_cost) if apply_batch else 1000,
-                weight_key: float(batch_weight) if apply_batch else float(default_weight),
-                profit_key: float(batch_profit) if apply_batch else 30.0,
+                cost_key: int(batch_cost),
+                weight_key: float(batch_weight),
+                profit_key: float(batch_profit),
                 price_key: 0,
-                stock_key: int(batch_stock) if apply_batch else 5,
+                stock_key: int(batch_stock),
                 "Opt1": opt1,
                 "Opt2": opt2
             })
@@ -421,13 +426,18 @@ for idx, p in enumerate(st.session_state.products):
             sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
             
             match = df_existing[df_existing["Variation"] == var_title]
+            
+            # ตรวจสอบการกดปุ่มเพื่ออัปเดตเฉพาะค่าที่เลือก
             if not match.empty:
-                c_val = match.iloc[0].get(cost_key, 1000)
-                w_val = match.iloc[0].get(weight_key, float(default_weight))
-                p_val = match.iloc[0].get(profit_key, 30.0)
-                s_val = match.iloc[0].get(stock_key, 5)
+                c_val = int(batch_cost) if apply_cost else match.iloc[0].get(cost_key, 1000)
+                w_val = float(batch_weight) if apply_weight else match.iloc[0].get(weight_key, float(default_weight))
+                p_val = float(batch_profit) if apply_profit else match.iloc[0].get(profit_key, 30.0)
+                s_val = int(batch_stock) if apply_stock else match.iloc[0].get(stock_key, 5)
             else:
-                c_val, w_val, p_val, s_val = 1000, float(default_weight), 30.0, 5
+                c_val = int(batch_cost) if apply_cost else 1000
+                w_val = float(batch_weight) if apply_weight else float(default_weight)
+                p_val = float(batch_profit) if apply_profit else 30.0
+                s_val = int(batch_stock) if apply_stock else 5
 
             new_grid_data.append({
                 "Variation": var_title,
@@ -444,7 +454,7 @@ for idx, p in enumerate(st.session_state.products):
 
     df_var = st.session_state[df_state_key]
 
-    # คำนวณราคา Selling Price (THB) ก่อนแสดงผล
+    # คำนวณราคา Selling Price (THB)
     df_var[price_key] = df_var.apply(
         lambda row: calculate_net_price(
             buying_price_jpy=row[cost_key],
