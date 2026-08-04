@@ -5,9 +5,9 @@ import itertools
 import math
 import pandas as pd
 
-st.set_page_config(page_title="Shopee Mass Upload & Price Calculator", layout="wide")
+st.set_page_config(page_title="Shopee Auto Price & Mass Upload Builder", layout="wide")
 
-# --- 1. LOGIC การคำนวณค่าขนส่ง SLS & NET PRICE ---
+# --- 1. LOGIC การคำนวณค่าขนส่ง SLS & ภาษีศุลกากร (CUSTOMS & TRANSPORTATION) ---
 
 SLS_RATES_THB = [
     (100, 52), (200, 76), (300, 100), (400, 124), (500, 148),
@@ -59,6 +59,7 @@ def calculate_net_price(buying_price_jpy, weight_kg, currency="THB", rate_jpy=No
         temp_price = (sls_fee + buying_price_php + transportation_jp_php) / 0.70
         cif_value = temp_price * 1.01 + (1369 * (weight_g / 1000))
         
+        # กฎภาษีศุลกากร De Minimis 10,000 PHP
         if cif_value >= 10000:
             net_price = (sls_fee + (1369 * (weight_g / 1000) * 0.12) + buying_price_php + transportation_jp_php) / 0.5788
         else:
@@ -69,7 +70,7 @@ def calculate_net_price(buying_price_jpy, weight_kg, currency="THB", rate_jpy=No
     return 0
 
 
-# --- 2. ระบบจัดการภาษา (TH / EN / JA) ---
+# --- 2. MULTI-LANGUAGE DICTIONARY ---
 LANG_TEXTS = {
     "TH": {
         "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ",
@@ -91,9 +92,9 @@ LANG_TEXTS = {
         "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
         "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
-        "grid_title": "💰 ตารางกำหนดต้นทุน JPY สต๊อก และคำนวณราคาขายอัตโนมัติ:",
-        "cost_col": "ต้นทุน (JPY)",
-        "price_col": "ราคาขาย",
+        "grid_title": "💰 กำหนดราคาซื้อ (JPY) สต๊อก และคำนวณราคาขายอัตโนมัติ:",
+        "cost_col": "ราคาซื้อ (JPY)",
+        "price_col": "ราคาขายอัตโนมัติ",
         "stock_col": "Stock (ชิ้น)",
         "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
         "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
@@ -125,9 +126,9 @@ LANG_TEXTS = {
         "v1_imgs": "Variation 1 Image URLs (comma separated)",
         "v2_name": "Variation 2 Name (e.g., Size) [Optional]",
         "v2_opts": "Variation 2 Options (comma separated)",
-        "grid_title": "💰 Variation Cost JPY, Stock & Auto Selling Price:",
+        "grid_title": "💰 Buying Price (JPY), Stock & Auto Calculated Selling Price:",
         "cost_col": "Buying Price (JPY)",
-        "price_col": "Selling Price",
+        "price_col": "Auto Selling Price",
         "stock_col": "Stock",
         "btn_generate": "🚀 Generate Combined Shopee Excel File",
         "success_msg": "✅ Successfully generated! Total {count} product(s).",
@@ -146,7 +147,7 @@ LANG_TEXTS = {
         "rate_label": "為替レート (JPY)",
         "add_product": "➕ 新しい商品を追加",
         "del_product": "🗑️ この商品を削除",
-        "product_num": "🛒 สินค้า #",
+        "product_num": "🛒 商品 #",
         "cat_id": "カテゴリーID",
         "parent_sku": "親SKU (Parent SKU)",
         "brand": "ブランド (Brand)",
@@ -159,9 +160,9 @@ LANG_TEXTS = {
         "v1_imgs": "バリエーション1の画像URL (カンマ区切り)",
         "v2_name": "バリエーション2名称 (例: サイズ) [任意]",
         "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
-        "grid_title": "💰 バリエーション仕入れ値(JPY)・在庫・自動計算価格:",
+        "grid_title": "💰 仕入れ値(JPY)・在庫・自動計算販売価格:",
         "cost_col": "仕入れ値 (JPY)",
-        "price_col": "販売価格",
+        "price_col": "自動計算販売価格",
         "stock_col": "在庫数",
         "btn_generate": "🚀 全商品まとめてShopee用Excelファイルを生成",
         "success_msg": "✅ 生成成功！ 合計 {count} 件の商品。",
@@ -190,7 +191,7 @@ T = LANG_TEXTS[lang_code]
 
 st.title(T["title"])
 
-# --- 3. GLOBAL CONTROL PANEL (การคำนวณราคา) ---
+# --- 3. GLOBAL CONTROL PANEL ---
 st.subheader(T["calc_setting"])
 col_cur, col_rate = st.columns(2)
 
@@ -203,7 +204,6 @@ with col_rate:
 
 st.markdown("---")
 
-# จัดเก็บรายการสินค้าใน Session State
 if "products" not in st.session_state:
     st.session_state.products = [
         {
@@ -211,7 +211,7 @@ if "products" not in st.session_state:
             "parent_sku": "SHIRT-001",
             "brand": "No Brand",
             "product_name": T["default_pname"],
-            "weight": 0.3,
+            "weight": 0.1,  # ค่าเริ่มต้น 100g (0.1 kg)
             "product_desc": T["default_pdesc"],
             "cover_image": "https://example.com/shirt_cover.jpg",
             "v1_name": T["default_v1_name"],
@@ -231,7 +231,7 @@ with col_btn1:
             "parent_sku": f"ITEM-{len(st.session_state.products)+1:03d}",
             "brand": "No Brand",
             "product_name": f"{T['product_num']} {len(st.session_state.products)+1}",
-            "weight": 0.3,
+            "weight": 0.1,
             "product_desc": "...",
             "cover_image": "https://example.com/cover.jpg",
             "v1_name": "Option",
@@ -242,7 +242,6 @@ with col_btn1:
         })
         st.rerun()
 
-# ฟอร์มกรอกข้อมูลของสินค้าแต่ละตัว
 updated_products_data = []
 
 for idx, p in enumerate(st.session_state.products):
@@ -264,7 +263,7 @@ for idx, p in enumerate(st.session_state.products):
         brand = st.text_input(T["brand"], value=p["brand"], key=f"brand_{idx}")
     with c2:
         p_name = st.text_input(T["p_name"], value=p["product_name"], key=f"name_{idx}")
-        weight = st.number_input(T["weight"], value=float(p["weight"]), step=0.05, key=f"w_{idx}")
+        weight = st.number_input(T["weight"], value=float(p["weight"]), step=0.05, format="%.2f", key=f"w_{idx}")
     with c3:
         p_desc = st.text_area(T["p_desc"], value=p["product_desc"], key=f"desc_{idx}")
 
@@ -286,48 +285,59 @@ for idx, p in enumerate(st.session_state.products):
     list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
-    # สร้างข้อมูลใส่ DataFrame พร้อมคำนวณราคาขายจาก JPY
     grid_data = []
     price_col_label = f"{T['price_col']} ({currency})"
 
     for opt1, opt2 in variations:
         var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
         sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
-        default_cost_jpy = 1200
-        
-        # คำนวณ Net Price ตามสูตร
-        auto_price = calculate_net_price(
-            buying_price_jpy=default_cost_jpy,
-            weight_kg=weight,
-            currency=currency,
-            rate_jpy=rate_jpy
-        )
+        default_cost_jpy = 1000  # ค่าเริ่มต้น 1000 Yen ตามต้องการ
 
         grid_data.append({
             "Variation": var_title,
             "SKU": f"{p_sku}{sku_suffix}",
             T["cost_col"]: default_cost_jpy,
-            price_col_label: float(auto_price),
+            price_col_label: 0,
             T["stock_col"]: 50,
             "Opt1": opt1,
             "Opt2": opt2
         })
         
     df_var = pd.DataFrame(grid_data)
-    
+
+    # คำนวณราคาอัตโนมัติ Real-time จากต้นทุน JPY และ น้ำหนัก kg
+    df_var[price_col_label] = df_var.apply(
+        lambda row: calculate_net_price(
+            buying_price_jpy=row[T["cost_col"]],
+            weight_kg=weight,
+            currency=currency,
+            rate_jpy=rate_jpy
+        ), axis=1
+    )
+
     st.write(T["grid_title"])
     edited_df = st.data_editor(
         df_var,
         column_config={
             "Variation": st.column_config.Column(disabled=True),
             T["cost_col"]: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
-            price_col_label: st.column_config.NumberColumn(price_col_label, min_value=0, format="%d " + currency),
+            price_col_label: st.column_config.NumberColumn(price_col_label, disabled=True, format="%d " + currency),
             T["stock_col"]: st.column_config.NumberColumn(T["stock_col"], min_value=0, format="%d"),
             "Opt1": None,
             "Opt2": None
         },
         hide_index=True,
         key=f"editor_{idx}"
+    )
+
+    # Recalculate หลังการแก้ไขราคาซื้อ JPY ในตาราง
+    edited_df[price_col_label] = edited_df.apply(
+        lambda row: calculate_net_price(
+            buying_price_jpy=row[T["cost_col"]],
+            weight_kg=weight,
+            currency=currency,
+            rate_jpy=rate_jpy
+        ), axis=1
     )
 
     updated_products_data.append({
@@ -345,7 +355,7 @@ for idx, p in enumerate(st.session_state.products):
         "price_col_label": price_col_label
     })
 
-# --- 4. ส่วนของการสร้างไฟล์ EXCEL ---
+# --- 4. EXPORT EXCEL ---
 st.markdown("---")
 if st.button(T["btn_generate"], type="primary", use_container_width=True):
     try:
@@ -356,7 +366,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         ws = wb.active
         ws.title = "Template"
 
-    start_row = 6  # บรรทัดแรกใน Template
+    start_row = 6
 
     for p_data in updated_products_data:
         cat_id = p_data["cat_id"]
@@ -379,13 +389,11 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         for idx, row in df_vars.iterrows():
             current_row = start_row
             
-            # 1. ข้อมูลพื้นฐานสินค้า
             ws.cell(row=current_row, column=1, value=cat_id)
             ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
             ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
             ws.cell(row=current_row, column=10, value=p_sku)
             
-            # 2. ข้อมูล Variation
             ws.cell(row=current_row, column=11, value=v1_name)
             ws.cell(row=current_row, column=12, value=row["Opt1"])
             ws.cell(row=current_row, column=13, value=v1_img_dict.get(row["Opt1"], ""))
@@ -398,7 +406,6 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             ws.cell(row=current_row, column=17, value=row[T["stock_col"]])
             ws.cell(row=current_row, column=18, value=row["SKU"])
             
-            # 3. รูปภาพหลักและค่าจัดส่ง
             if idx == 0:
                 ws.cell(row=current_row, column=21, value=cover_img)
                 ws.cell(row=current_row, column=30, value=weight)
