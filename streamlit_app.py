@@ -31,8 +31,7 @@ def fetch_jpy_rates():
     return default_rates
 
 
-# --- 1. ตาราง SLS TRANSPORTATION ACCORDING TO YOUR SHEET ---
-
+# --- 1. ตาราง SLS TRANSPORTATION ---
 SLS_RATES_THB = [
     (100, 93), (200, 105), (300, 129), (400, 153), (500, 177),
     (600, 200), (700, 230), (800, 250), (900, 270), (1000, 300),
@@ -61,7 +60,6 @@ def get_sls_shipping_fee_thb(weight_g):
     for max_weight, fee in SLS_RATES_THB:
         if weight_g <= max_weight:
             return fee
-    # คำนวณส่วนเกินหลังจาก 20kg
     last_weight, last_fee = SLS_RATES_THB[-1]
     extra_steps = ((weight_g - last_weight) + 499) // 500
     return last_fee + (extra_steps * 120)
@@ -70,7 +68,6 @@ def get_sls_shipping_fee_php(weight_g):
     for max_weight, fee in SLS_RATES_PHP:
         if weight_g <= max_weight:
             return fee
-    # คำนวณส่วนเกินหลังจาก 1550g (สเต็ปละ 50g เพิ่ม 25 PHP)
     last_weight, last_fee = SLS_RATES_PHP[-1]
     extra_steps = ((weight_g - last_weight) + 49) // 50
     return last_fee + (extra_steps * 25)
@@ -86,39 +83,32 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
     if buying_price_jpy <= 0 or weight_g <= 0:
         return 0
 
-    # Margin factor (0.7 เมื่อ profit rate = 30%)
     margin_factor = 1.0 - (profit_rate_pct / 100.0)
     if margin_factor <= 0:
         margin_factor = 0.01
 
     if currency == "THB":
         rate = rate_jpy if rate_jpy else 4.724
-        buying_price_thb = buying_price_jpy / rate       # Column AB
-        transportation_jp_thb = 70.0                      # Column AC (Fix 70 THB)
-        sls_fee = get_sls_shipping_fee_thb(weight_g)      # Column T (SLS)
+        buying_price_thb = buying_price_jpy / rate
+        transportation_jp_thb = 70.0
+        sls_fee = get_sls_shipping_fee_thb(weight_g)
         
-        # สูตร TH: (T79+AB79+AC79)/0.7
         net_price = (sls_fee + buying_price_thb + transportation_jp_thb) / margin_factor
         return round(net_price)
 
     elif currency == "PHP":
         rate = rate_jpy if rate_jpy else 2.590111
-        buying_price_php = buying_price_jpy / rate       # Column AD
-        transportation_jp_php = 116.0                     # Column AE (Fix 116 PHP)
-        sls_fee = get_sls_shipping_fee_php(weight_g)      # Column T (SLS)
+        buying_price_php = buying_price_jpy / rate
+        transportation_jp_php = 116.0
+        sls_fee = get_sls_shipping_fee_php(weight_g)
         
-        # คำนวณราคาแบบปกติก่อนเพื่อเช็คเงื่อนไข CIF
         base_price = (sls_fee + buying_price_php + transportation_jp_php) / margin_factor
-        
-        # สูตร CIF: (T3+AD3+AE3)/0.7*1.01+1369*(S3/1000)
         cif_check = (base_price * 1.01) + (1369.0 * (weight_g / 1000.0))
         
         if cif_check >= 10000:
-            # สูตร PH >= 10000: (T3+1369*(S3/1000)*0.12+AD3+AE3)/0.5788
             custom_tax_part = 1369.0 * (weight_g / 1000.0) * 0.12
             net_price = (sls_fee + custom_tax_part + buying_price_php + transportation_jp_php) / 0.5788
         else:
-            # สูตร PH < 10000: (T3+AD3+AE3)/0.7
             net_price = base_price
             
         return round(net_price)
@@ -244,7 +234,6 @@ LANG_TEXTS = {
     }
 }
 
-# --- 2.1 DROPDOWN ภาษาใน SIDEBAR ---
 st.sidebar.title("🌐 Language Settings")
 selected_lang = st.sidebar.selectbox(
     "Choose Language / 言語選択",
@@ -260,7 +249,6 @@ else:
     lang_code = "TH"
 
 T = LANG_TEXTS[lang_code]
-
 st.title(T["title"])
 
 # --- 3. GLOBAL CONTROL PANEL ---
@@ -328,7 +316,6 @@ for idx, p in enumerate(st.session_state.products):
                 st.session_state.products.pop(idx)
                 st.rerun()
 
-    # 1. ข้อมูลหลัก
     c1, c2, c3 = st.columns(3)
     with c1:
         cat_id = st.text_input(T["cat_id"], value=p["category_id"], key=f"cat_{idx}")
@@ -342,7 +329,6 @@ for idx, p in enumerate(st.session_state.products):
 
     cover_img = st.text_input(T["cover_img"], value=p["cover_image"], key=f"cimg_{idx}")
 
-    # 2. ตัวเลือก Variation
     cv1, cv2 = st.columns(2)
     with cv1:
         v1_name = st.text_input(T["v1_name"], value=p["v1_name"], key=f"v1n_{idx}")
@@ -356,28 +342,33 @@ for idx, p in enumerate(st.session_state.products):
     list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
-    # --- 3. BATCH APPLY SECTION ---
     st.write(T["batch_title"])
     b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns([2, 2, 2, 2, 3])
     
     with b_col1:
-        batch_cost = st.number_input(T["cost_col"], value=1417, step=100, key=f"b_cost_{idx}")
+        batch_cost = st.number_input(T["cost_col"], value=1000, step=100, key=f"b_cost_{idx}")
     with b_col2:
         batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=10.0, format="%.1f", key=f"b_weight_{idx}")
     with b_col3:
-        batch_profit = st.number_input(T["profit_col"], value=30.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
+        batch_profit = st.number_input(T["profit_col"], value=20.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
     with b_col4:
-        batch_stock = st.number_input(T["stock_col"], value=50, step=5, key=f"b_stock_{idx}")
+        batch_stock = st.number_input(T["stock_col"], value=5, step=1, key=f"b_stock_{idx}")
     with b_col5:
         st.write("") 
         st.write("") 
         apply_batch = st.button(T["btn_batch_apply"], key=f"btn_batch_{idx}")
 
     df_state_key = f"df_data_{idx}"
-    grid_data = []
-    price_col_label = f"{T['price_col']} ({currency})"
+    
+    # ใช้ Key ภาษาอังกฤษถาวรเพื่อป้องกัน KeyError เมื่อสลับภาษา
+    cost_key = "cost_jpy"
+    weight_key = "weight_g"
+    profit_key = "profit_rate"
+    price_key = "selling_price"
+    stock_key = "stock"
 
     if df_state_key not in st.session_state or apply_batch:
+        grid_data = []
         for opt1, opt2 in variations:
             var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
             sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
@@ -385,11 +376,11 @@ for idx, p in enumerate(st.session_state.products):
             grid_data.append({
                 "Variation": var_title,
                 "SKU": f"{p_sku}{sku_suffix}",
-                T["cost_col"]: int(batch_cost) if apply_batch else 1417,
-                T["weight_col"]: float(batch_weight) if apply_batch else float(default_weight),
-                T["profit_col"]: float(batch_profit) if apply_batch else 30.0,
-                price_col_label: 0,
-                T["stock_col"]: int(batch_stock) if apply_batch else 50,
+                cost_key: int(batch_cost) if apply_batch else 1000,
+                weight_key: float(batch_weight) if apply_batch else float(default_weight),
+                profit_key: float(batch_profit) if apply_batch else 20.0,
+                price_key: 0,
+                stock_key: int(batch_stock) if apply_batch else 5,
                 "Opt1": opt1,
                 "Opt2": opt2
             })
@@ -403,21 +394,21 @@ for idx, p in enumerate(st.session_state.products):
             
             match = df_existing[df_existing["Variation"] == var_title]
             if not match.empty:
-                c_val = match.iloc[0][T["cost_col"]]
-                w_val = match.iloc[0][T["weight_col"]]
-                p_val = match.iloc[0][T["profit_col"]]
-                s_val = match.iloc[0][T["stock_col"]]
+                c_val = match.iloc[0].get(cost_key, 1000)
+                w_val = match.iloc[0].get(weight_key, float(default_weight))
+                p_val = match.iloc[0].get(profit_key, 20.0)
+                s_val = match.iloc[0].get(stock_key, 5)
             else:
-                c_val, w_val, p_val, s_val = 1417, float(default_weight), 30.0, 50
+                c_val, w_val, p_val, s_val = 1000, float(default_weight), 20.0, 5
 
             new_grid_data.append({
                 "Variation": var_title,
                 "SKU": f"{p_sku}{sku_suffix}",
-                T["cost_col"]: c_val,
-                T["weight_col"]: w_val,
-                T["profit_col"]: p_val,
-                price_col_label: 0,
-                T["stock_col"]: s_val,
+                cost_key: c_val,
+                weight_key: w_val,
+                profit_key: p_val,
+                price_key: 0,
+                stock_key: s_val,
                 "Opt1": opt1,
                 "Opt2": opt2
             })
@@ -431,11 +422,11 @@ for idx, p in enumerate(st.session_state.products):
         column_config={
             "Variation": st.column_config.Column(disabled=True),
             "SKU": st.column_config.Column(disabled=True),
-            T["cost_col"]: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
-            T["weight_col"]: st.column_config.NumberColumn(T["weight_col"], min_value=1.0, format="%.1f g"),
-            T["profit_col"]: st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
-            price_col_label: st.column_config.NumberColumn(price_col_label, disabled=True, format="%d " + currency),
-            T["stock_col"]: st.column_config.NumberColumn(T["stock_col"], min_value=0, format="%d"),
+            cost_key: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
+            weight_key: st.column_config.NumberColumn(T["weight_col"], min_value=1.0, format="%.1f g"),
+            profit_key: st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
+            price_key: st.column_config.NumberColumn(f"{T['price_col']} ({currency})", disabled=True, format="%d " + currency),
+            stock_key: st.column_config.NumberColumn(T["stock_col"], min_value=0, format="%d"),
             "Opt1": None,
             "Opt2": None
         },
@@ -443,12 +434,11 @@ for idx, p in enumerate(st.session_state.products):
         key=f"editor_{idx}"
     )
 
-    # คำนวณราคาขายสุทธิ (Selling Price) ตามสูตรเป๊ะๆ
-    edited_df[price_col_label] = edited_df.apply(
+    edited_df[price_key] = edited_df.apply(
         lambda row: calculate_net_price(
-            buying_price_jpy=row[T["cost_col"]],
-            weight_g=row[T["weight_col"]],
-            profit_rate_pct=row[T["profit_col"]],
+            buying_price_jpy=row[cost_key],
+            weight_g=row[weight_key],
+            profit_rate_pct=row[profit_key],
             currency=currency,
             rate_jpy=rate_jpy
         ), axis=1
@@ -468,7 +458,10 @@ for idx, p in enumerate(st.session_state.products):
         "v1_imgs": [x.strip() for x in v1_imgs.split(",") if x.strip()],
         "v2_name": v2_name,
         "variations_table": edited_df,
-        "price_col_label": price_col_label
+        "cost_key": cost_key,
+        "weight_key": weight_key,
+        "price_key": price_key,
+        "stock_key": stock_key
     })
 
 # --- 4. EXPORT EXCEL ---
@@ -489,13 +482,16 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         p_sku = p_data["p_sku"]
         p_name = p_data["p_name"]
         p_desc = p_data["p_desc"]
-        default_weight = p_data["weight"] / 1000.0  # แปลง g เป็น kg สำหรับส่งออก Shopee
         cover_img = p_data["cover_img"]
         v1_name = p_data["v1_name"]
         v2_name = p_data["v2_name"]
         v1_imgs = p_data["v1_imgs"]
         df_vars = p_data["variations_table"]
-        price_col_label = p_data["price_col_label"]
+        
+        c_k = p_data["cost_key"]
+        w_k = p_data["weight_key"]
+        pr_k = p_data["price_key"]
+        st_k = p_data["stock_key"]
 
         unique_v1 = df_vars["Opt1"].unique().tolist()
         v1_img_dict = {}
@@ -518,13 +514,13 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
                 ws.cell(row=current_row, column=14, value=v2_name)
                 ws.cell(row=current_row, column=15, value=row["Opt2"])
                 
-            ws.cell(row=current_row, column=16, value=row[price_col_label])
-            ws.cell(row=current_row, column=17, value=row[T["stock_col"]])
+            ws.cell(row=current_row, column=16, value=row[pr_k])
+            ws.cell(row=current_row, column=17, value=row[st_k])
             ws.cell(row=current_row, column=18, value=row["SKU"])
             
             if idx == 0:
                 ws.cell(row=current_row, column=21, value=cover_img)
-                ws.cell(row=current_row, column=30, value=row[T["weight_col"]] / 1000.0)
+                ws.cell(row=current_row, column=30, value=row[w_k] / 1000.0)
                 ws.cell(row=current_row, column=34, value="On")
 
             start_row += 1
