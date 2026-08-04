@@ -4,42 +4,10 @@ import openpyxl
 import io
 import math
 
-st.set_page_config(page_title="Shopee Mass Upload & Price Calculator", layout="wide")
+st.set_page_config(page_title="Shopee All-in-One Item Builder & Price Calculator", layout="wide")
 
-# --- 1. ระบบจัดการภาษา (TH / EN / JA) ---
-LANG_TEXTS = {
-    "TH": {
-        "title": "🛍️ เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขาย (THB / PHP)",
-        "currency_select": "เลือกตลาดเป้าหมาย (Currency)",
-        "rate_label": "อัตราแลกเปลี่ยน (JPY)",
-        "default_weight": "น้ำหนักเริ่มต้นสินค้า (กรัม)",
-        "add_product": "➕ เพิ่มรายการสินค้า",
-        "export_btn": "🚀 ส่งออกไฟล์ Excel สำหรับ Shopee Mass Upload",
-        "variation_header": "กำหนดรายการสินค้าและ Variation",
-    },
-    "EN": {
-        "title": "🛍️ Shopee Mass Upload Generator & Price Calculator (THB / PHP)",
-        "currency_select": "Select Target Market (Currency)",
-        "rate_label": "Exchange Rate (JPY)",
-        "default_weight": "Default Weight (grams)",
-        "add_product": "➕ Add Product",
-        "export_btn": "🚀 Export Excel for Shopee Mass Upload",
-        "variation_header": "Product Variations & Pricing",
-    },
-    "JA": {
-        "title": "🛍️ Shopee 一括アップロード作成 & 価格計算ツール (THB / PHP)",
-        "currency_select": "ターゲット市場選択 (通貨)",
-        "rate_label": "為替レート (JPY)",
-        "default_weight": "デフォルト weight (g)",
-        "add_product": "➕ 商品を追加",
-        "export_btn": "🚀 Shopee用 Excel エกสポート",
-        "variation_header": "バリエーション・価格設定",
-    }
-}
+# --- 1. LOGIC การคำนวณค่าขนส่ง SLS & NET PRICE ---
 
-# --- 2. LOGIC การคำนวณค่าขนส่ง SLS & NET PRICE ---
-
-# ตารางค่าขนส่ง SLS สำหรับประเทศไทย (THB)
 SLS_RATES_THB = [
     (100, 52), (200, 76), (300, 100), (400, 124), (500, 148),
     (600, 172), (700, 196), (800, 220), (900, 244), (1000, 268),
@@ -93,57 +61,103 @@ def calculate_net_price(buying_price_jpy, weight_g, currency="THB", rate_jpy=Non
 
     return 0
 
+# --- 2. STREAMLIT ALL-IN-ONE UI ---
 
-# --- 3. STREAMLIT UI INTERFACE ---
+st.title("🛍️ Shopee Mass Upload & Auto Price Calculator (ครบจบในหน้าเดียว)")
+st.caption("กรอกข้อมูลสินค้า เลือกตลาดเป้าหมาย คำนวณราคาอัตโนมัติ และส่งออกไฟล์ Excel ได้ทันที")
 
-# เลือกภาษาใน Sidebar
-lang = st.sidebar.selectbox("🌐 Language / ภาษา", ["TH", "EN", "JA"])
-t = LANG_TEXTS[lang]
-
-st.title(t["title"])
-
-st.markdown("---")
-# Control Panel
+# --- Control Panel (ส่วนตั้งค่าระบบคำนวณราคา) ---
+st.subheader("⚙️ 1. ตั้งค่าการคำนวณราคา (Target Market & Exchange Rates)")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    currency = st.selectbox(t["currency_select"], ["THB", "PHP"])
+    currency = st.selectbox("เลือกตลาดเป้าหมาย (Currency)", ["THB", "PHP"])
 
 with col2:
     default_rate = 4.868196 if currency == "THB" else 2.590111
-    rate_jpy = st.number_input(f"{t['rate_label']} ({currency}/JPY)", value=default_rate, format="%.6f")
+    rate_jpy = st.number_input(f"อัตราแลกเปลี่ยน ({currency}/JPY)", value=default_rate, format="%.6f")
 
 with col3:
-    default_weight = st.number_input(t["default_weight"], value=300, step=50)
+    default_weight = st.number_input("น้ำหนักเริ่มต้นสินค้า (กรัม)", value=300, step=50)
 
-st.subheader(t["variation_header"])
+st.markdown("---")
 
-# ข้อมูลตัวอย่างเริ่มต้น
+# --- Data Input & Calculation Table (ตารางลงข้อมูลและคำนวณราคา) ---
+st.subheader("📝 2. จัดการข้อมูลสินค้า / Variation / ต้นทุน / คำนวณราคาขาย")
+
+# สร้าง Mockup Data ตัวอย่างหากยังไม่มีข้อมูล
 if "product_data" not in st.session_state:
     st.session_state.product_data = pd.DataFrame([
-        {"Parent SKU": "MODEL-001", "Variation 1": "Red", "Variation 2": "S", "SKU": "MODEL-001-RED-S", "Buying Price (JPY)": 990, "Weight (g)": default_weight, "Stock": 100},
-        {"Parent SKU": "MODEL-001", "Variation 1": "Red", "Variation 2": "M", "SKU": "MODEL-001-RED-M", "Buying Price (JPY)": 990, "Weight (g)": default_weight, "Stock": 100},
-        {"Parent SKU": "MODEL-001", "Variation 1": "Black", "Variation 2": "S", "SKU": "MODEL-001-BLK-S", "Buying Price (JPY)": 1200, "Weight (g)": default_weight, "Stock": 100},
+        {
+            "Category ID": 1001,
+            "Parent SKU": "SHIRT-001",
+            "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
+            "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
+            "Variation 1 Name": "สี",
+            "Variation 1 Option": "Red",
+            "Variation 2 Name": "ไซส์",
+            "Variation 2 Option": "S",
+            "SKU": "SHIRT-001-RED-S",
+            "Buying Price (JPY)": 1200,
+            "Weight (g)": default_weight,
+            "Stock": 50
+        },
+        {
+            "Category ID": 1001,
+            "Parent SKU": "SHIRT-001",
+            "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
+            "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
+            "Variation 1 Name": "สี",
+            "Variation 1 Option": "Red",
+            "Variation 2 Name": "ไซส์",
+            "Variation 2 Option": "M",
+            "SKU": "SHIRT-001-RED-M",
+            "Buying Price (JPY)": 1200,
+            "Weight (g)": default_weight,
+            "Stock": 50
+        },
+        {
+            "Category ID": 1001,
+            "Parent SKU": "SHIRT-001",
+            "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
+            "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
+            "Variation 1 Name": "สี",
+            "Variation 1 Option": "Black",
+            "Variation 2 Name": "ไซส์",
+            "Variation 2 Option": "L",
+            "SKU": "SHIRT-001-BLK-L",
+            "Buying Price (JPY)": 1500,
+            "Weight (g)": default_weight,
+            "Stock": 30
+        }
     ])
 
-# คำนวณราคาขายอัตโนมัติ
+# คำนวณราคา Net Price อัตโนมัติทุกครั้งที่มีการเปลี่ยนค่า
 df_display = st.session_state.product_data.copy()
-df_display[f"Calculated Price ({currency})"] = df_display.apply(
+df_display[f"Selling Price ({currency})"] = df_display.apply(
     lambda row: calculate_net_price(
-        buying_price_jpy=row["Buying Price (JPY)"],
-        weight_g=row["Weight (g)"],
+        buying_price_jpy=row.get("Buying Price (JPY)", 0),
+        weight_g=row.get("Weight (g)", default_weight),
         currency=currency,
         rate_jpy=rate_jpy
     ), axis=1
 )
 
-# ตารางแก้ไขข้อมูล (Data Editor)
+# จัดลำดับคอลัมน์ให้อ่านง่าย
+cols_order = [
+    "Parent SKU", "Product Name", "Variation 1 Option", "Variation 2 Option", 
+    "SKU", "Buying Price (JPY)", "Weight (g)", f"Selling Price ({currency})", "Stock", 
+    "Category ID", "Description"
+]
+
+# ตาราง Data Editor ให้ผู้ใช้แก้ไขได้ในหน้าเดียว
 edited_df = st.data_editor(
-    df_display,
+    df_display[cols_order],
     column_config={
         "Buying Price (JPY)": st.column_config.NumberColumn("Buying Price (JPY)", min_value=0, format="%d ¥"),
         "Weight (g)": st.column_config.NumberColumn("Weight (g)", min_value=1, format="%d g"),
-        f"Calculated Price ({currency})": st.column_config.NumberColumn(f"Calculated Price ({currency})", disabled=True, format="%d " + currency),
+        f"Selling Price ({currency})": st.column_config.NumberColumn(f"Calculated Net Price ({currency})", disabled=True, format="%d " + currency),
+        "Stock": st.column_config.NumberColumn("Stock", min_value=0, format="%d"),
     },
     use_container_width=True,
     num_rows="dynamic"
@@ -151,15 +165,16 @@ edited_df = st.data_editor(
 
 st.session_state.product_data = edited_df
 
-# --- 4. EXPORT EXCEL GENERATOR ---
+# --- 3. Export Excel ---
 st.markdown("---")
+st.subheader("📥 3. ดาวน์โหลดไฟล์ Excel สำหรับ Mass Upload")
 
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
     edited_df.to_excel(writer, index=False, sheet_name='Mass Upload')
 
 st.download_button(
-    label=t["export_btn"],
+    label=f"🚀 ส่งออกไฟล์ Excel สำหรับ Shopee ({currency})",
     data=buffer.getvalue(),
     file_name=f"Shopee_Mass_Upload_{currency}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
