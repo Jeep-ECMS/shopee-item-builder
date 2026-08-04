@@ -11,6 +11,9 @@ st.set_page_config(page_title="Shopee Auto Price & Mass Upload Builder", layout=
 # --- 0. API ดึงอัตราแลกเปลี่ยน REALTIME ---
 @st.cache_data(ttl=3600)
 def fetch_jpy_rates():
+    """
+    ดึงอัตราแลกเปลี่ยน JPY -> THB และ PHP แบบ Real-time
+    """
     default_rates = {"THB": 4.724, "PHP": 2.590111}
     try:
         url = "https://open.er-api.com/v6/latest/JPY"
@@ -120,9 +123,10 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
 LANG_TEXTS = {
     "TH": {
         "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ",
-        "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Exchange Rate)",
+        "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Real-time Exchange Rate)",
         "currency_select": "เลือกตลาดเป้าหมาย",
-        "rate_label": "อัตราแลกเปลี่ยน (JPY / AB1 / AD1)",
+        "rate_label": "อัตราแลกเปลี่ยน Real-time (1 JPY)",
+        "rate_info": "💡 ดึงข้อมูลอัตราแลกเปลี่ยน Real-time ล่าสุดอัตโนมัติ",
         "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
         "del_product": "🗑️ ลบสินค้านี้",
         "product_num": "🛒 สินค้าชิ้นที่",
@@ -158,9 +162,10 @@ LANG_TEXTS = {
     },
     "EN": {
         "title": "📦 Shopee Mass Upload Generator & Price Calculator",
-        "calc_setting": "⚙️ Price Calculation Settings",
+        "calc_setting": "⚙️ Price Calculation Settings (Target Market & Real-time Rate)",
         "currency_select": "Target Market",
-        "rate_label": "Exchange Rate (JPY)",
+        "rate_label": "Real-time Exchange Rate (1 JPY)",
+        "rate_info": "💡 Auto-fetched latest real-time exchange rates",
         "add_product": "➕ Add New Product",
         "del_product": "🗑️ Delete Product",
         "product_num": "🛒 Product #",
@@ -196,9 +201,10 @@ LANG_TEXTS = {
     },
     "JA": {
         "title": "📦 Shopee 一括出品ファイル生成 & 自動価格計算ツール",
-        "calc_setting": "⚙️ 価格計算設定 (ターゲット市場 & 為替)",
+        "calc_setting": "⚙️ 価格計算設定 (ターゲット市場 & リアルタイム為替レート)",
         "currency_select": "ターゲット市場",
-        "rate_label": "為替レート (JPY)",
+        "rate_label": "リアルタイム為替レート (1 JPY)",
+        "rate_info": "💡 最新のリアルタイム為替レートを自動取得中",
         "add_product": "➕ 新しい商品を追加",
         "del_product": "🗑️ この商品を削除",
         "product_num": "🛒 商品 #",
@@ -251,7 +257,7 @@ else:
 T = LANG_TEXTS[lang_code]
 st.title(T["title"])
 
-# --- 3. GLOBAL CONTROL PANEL ---
+# --- 3. GLOBAL CONTROL PANEL (REAL-TIME EXCHANGE RATE) ---
 realtime_rates = fetch_jpy_rates()
 
 st.subheader(T["calc_setting"])
@@ -262,7 +268,13 @@ with col_cur:
 
 with col_rate:
     current_realtime_rate = realtime_rates.get(currency, 4.724 if currency == "THB" else 2.590111)
-    rate_jpy = st.number_input(f"{T['rate_label']} ({currency}/JPY)", value=current_realtime_rate, format="%.6f")
+    rate_jpy = st.number_input(
+        f"{T['rate_label']} = {current_realtime_rate:.6f} {currency}", 
+        value=current_realtime_rate, 
+        format="%.6f",
+        help=T["rate_info"]
+    )
+    st.caption(f"{T['rate_info']}: **1 JPY = {rate_jpy} {currency}**")
 
 st.markdown("---")
 
@@ -360,7 +372,6 @@ for idx, p in enumerate(st.session_state.products):
 
     df_state_key = f"df_data_{idx}"
     
-    # ใช้ Key ภาษาอังกฤษถาวรเพื่อป้องกัน KeyError เมื่อสลับภาษา
     cost_key = "cost_jpy"
     weight_key = "weight_g"
     profit_key = "profit_rate"
