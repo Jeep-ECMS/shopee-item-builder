@@ -10,9 +10,8 @@ import json
 st.set_page_config(page_title="Shopee Auto Price & Mass Upload Builder", layout="wide")
 
 # --- 0. API ดึงอัตราแลกเปลี่ยน REALTIME ---
-@st.cache_data(ttl=3600)  # แคชข้อมูลไว้ 1 ชั่วโมง (3600 วินาที)
+@st.cache_data(ttl=3600)
 def fetch_jpy_rates():
-    """ดึงเรทแลกเปลี่ยน JPY ล่าสุดจาก API"""
     default_rates = {"THB": 4.868196, "PHP": 2.590111}
     try:
         url = "https://open.er-api.com/v6/latest/JPY"
@@ -24,7 +23,6 @@ def fetch_jpy_rates():
             php_rate = rates.get("PHP")
             
             if thb_rate and php_rate:
-                # แปลงเรทให้อยู่ในรูป JPY ต่อ 1 THB / PHP (เช่น 4.86 JPY = 1 THB)
                 return {
                     "THB": round(1 / thb_rate, 6),
                     "PHP": round(1 / php_rate, 6)
@@ -126,7 +124,9 @@ LANG_TEXTS = {
         "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
         "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
-        "grid_title": "💰 กำหนดราคาซื้อ (JPY), น้ำหนัก (kg), Profit Rate (%), สต๊อก และคำนวณราคาขายอัตโนมัติ:",
+        "batch_title": "⚡ ตั้งค่าด่วน (นำค่านี้ไปใส่ให้ทุก Variation พร้อมกัน):",
+        "btn_batch_apply": "⚡ นำไปใช้กับทุก Variation",
+        "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (kg), Profit Rate (%), สต๊อก และราคาขาย:",
         "cost_col": "ราคาซื้อ (JPY)",
         "weight_col": "น้ำหนัก (kg)",
         "profit_col": "Profit Rate (%)",
@@ -162,7 +162,9 @@ LANG_TEXTS = {
         "v1_imgs": "Variation 1 Image URLs (comma separated)",
         "v2_name": "Variation 2 Name (e.g., Size) [Optional]",
         "v2_opts": "Variation 2 Options (comma separated)",
-        "grid_title": "💰 Buying Price (JPY), Weight (kg), Profit Rate (%), Stock & Auto Price:",
+        "batch_title": "⚡ Quick Batch Setup (Apply values to all variations at once):",
+        "btn_batch_apply": "⚡ Apply to All Variations",
+        "grid_title": "💰 Buying Price (JPY), Weight (kg), Profit Rate (%), Stock & Auto Price Table:",
         "cost_col": "Buying Price (JPY)",
         "weight_col": "Weight (kg)",
         "profit_col": "Profit Rate (%)",
@@ -198,6 +200,8 @@ LANG_TEXTS = {
         "v1_imgs": "バリエーション1の画像URL (カンマ区切り)",
         "v2_name": "バリエーション2名称 (例: サイズ) [任意]",
         "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
+        "batch_title": "⚡ 一括設定 (全バリエーションに一括適用):",
+        "btn_batch_apply": "⚡ 全バリエーションに適用",
         "grid_title": "💰 仕入れ値(JPY)・重量(kg)・利益率(%)・在庫・自動計算販売価格:",
         "cost_col": "仕入れ値 (JPY)",
         "weight_col": "重量 (kg)",
@@ -216,9 +220,13 @@ LANG_TEXTS = {
     }
 }
 
-# Sidebar ภาษา
-st.sidebar.title("🌐 Language / 言語")
-selected_lang = st.sidebar.radio("Select Language", ["TH (ไทย)", "EN (English)", "JA (日本語)"], index=0)
+# --- 1.1 DROPDOWN ภาษาใน SIDEBAR ---
+st.sidebar.title("🌐 Language Settings")
+selected_lang = st.sidebar.selectbox(
+    "Choose Language / 言語選択",
+    ["TH (ไทย)", "EN (English)", "JA (日本語)"],
+    index=0
+)
 
 if "EN" in selected_lang:
     lang_code = "EN"
@@ -232,7 +240,6 @@ T = LANG_TEXTS[lang_code]
 st.title(T["title"])
 
 # --- 3. GLOBAL CONTROL PANEL ---
-# ดึงข้อมูลเรท Realtime
 realtime_rates = fetch_jpy_rates()
 
 st.subheader(T["calc_setting"])
@@ -325,28 +332,81 @@ for idx, p in enumerate(st.session_state.products):
     list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
+    # --- 3. BATCH APPLY SECTION (กำหนดค่าด่วนทุก Variation) ---
+    st.write(T["batch_title"])
+    b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns([2, 2, 2, 2, 3])
+    
+    with b_col1:
+        batch_cost = st.number_input(T["cost_col"], value=1000, step=100, key=f"b_cost_{idx}")
+    with b_col2:
+        batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=0.05, format="%.2f", key=f"b_weight_{idx}")
+    with b_col3:
+        batch_profit = st.number_input(T["profit_col"], value=35.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
+    with b_col4:
+        batch_stock = st.number_input(T["stock_col"], value=50, step=5, key=f"b_stock_{idx}")
+    with b_col5:
+        st.write("") # Spacer
+        st.write("") # Spacer
+        apply_batch = st.button(T["btn_batch_apply"], key=f"btn_batch_{idx}")
+
+    # คีย์อ้างอิง Session State สำหรับ DataFrame ตาราง Variation
+    df_state_key = f"df_data_{idx}"
+
     grid_data = []
     price_col_label = f"{T['price_col']} ({currency})"
 
-    for opt1, opt2 in variations:
-        var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
-        sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
-        default_cost_jpy = 1000
+    # สร้างโครงตารางถ้ายังไม่มีใน Session State
+    if df_state_key not in st.session_state or apply_batch:
+        for opt1, opt2 in variations:
+            var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
+            sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
 
-        grid_data.append({
-            "Variation": var_title,
-            "SKU": f"{p_sku}{sku_suffix}",
-            T["cost_col"]: default_cost_jpy,
-            T["weight_col"]: float(default_weight),
-            T["profit_col"]: 35.0,
-            price_col_label: 0,
-            T["stock_col"]: 50,
-            "Opt1": opt1,
-            "Opt2": opt2
-        })
-        
-    df_var = pd.DataFrame(grid_data)
+            grid_data.append({
+                "Variation": var_title,
+                "SKU": f"{p_sku}{sku_suffix}",
+                T["cost_col"]: int(batch_cost) if apply_batch else 1000,
+                T["weight_col"]: float(batch_weight) if apply_batch else float(default_weight),
+                T["profit_col"]: float(batch_profit) if apply_batch else 35.0,
+                price_col_label: 0,
+                T["stock_col"]: int(batch_stock) if apply_batch else 50,
+                "Opt1": opt1,
+                "Opt2": opt2
+            })
+        st.session_state[df_state_key] = pd.DataFrame(grid_data)
+    else:
+        # อัปเดตโครงสร้าง SKU / Variation หากมีการแก้ไขชื่อ Option ด้านบน
+        df_existing = st.session_state[df_state_key]
+        new_grid_data = []
+        for opt1, opt2 in variations:
+            var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
+            sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
+            
+            # ดึงค่าเดิมถ้ามี
+            match = df_existing[df_existing["Variation"] == var_title]
+            if not match.empty:
+                c_val = match.iloc[0][T["cost_col"]]
+                w_val = match.iloc[0][T["weight_col"]]
+                p_val = match.iloc[0][T["profit_col"]]
+                s_val = match.iloc[0][T["stock_col"]]
+            else:
+                c_val, w_val, p_val, s_val = 1000, float(default_weight), 35.0, 50
 
+            new_grid_data.append({
+                "Variation": var_title,
+                "SKU": f"{p_sku}{sku_suffix}",
+                T["cost_col"]: c_val,
+                T["weight_col"]: w_val,
+                T["profit_col"]: p_val,
+                price_col_label: 0,
+                T["stock_col"]: s_val,
+                "Opt1": opt1,
+                "Opt2": opt2
+            })
+        st.session_state[df_state_key] = pd.DataFrame(new_grid_data)
+
+    df_var = st.session_state[df_state_key]
+
+    # แสดง Data Editor
     st.write(T["grid_title"])
     edited_df = st.data_editor(
         df_var,
@@ -365,6 +425,7 @@ for idx, p in enumerate(st.session_state.products):
         key=f"editor_{idx}"
     )
 
+    # คำนวณราคาขายสุทธิแบบ Auto Real-time
     edited_df[price_col_label] = edited_df.apply(
         lambda row: calculate_net_price(
             buying_price_jpy=row[T["cost_col"]],
@@ -374,6 +435,8 @@ for idx, p in enumerate(st.session_state.products):
             rate_jpy=rate_jpy
         ), axis=1
     )
+
+    st.session_state[df_state_key] = edited_df
 
     updated_products_data.append({
         "cat_id": cat_id,
