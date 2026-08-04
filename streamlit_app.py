@@ -4,7 +4,7 @@ import openpyxl
 import io
 import math
 
-st.set_page_config(page_title="Shopee All-in-One Item Builder & Price Calculator", layout="wide")
+st.set_page_config(page_title="Shopee Mass Upload & Auto Price Calculator", layout="wide")
 
 # --- 1. LOGIC การคำนวณค่าขนส่ง SLS & NET PRICE ---
 
@@ -30,9 +30,15 @@ def get_sls_shipping_fee_php(weight_g):
     return esf_zone_a + normal_fee
 
 def calculate_net_price(buying_price_jpy, weight_g, currency="THB", rate_jpy=None):
-    if not buying_price_jpy or buying_price_jpy <= 0:
+    try:
+        buying_price_jpy = float(buying_price_jpy)
+        weight_g = float(weight_g)
+    except (ValueError, TypeError):
         return 0
-    if not weight_g or weight_g <= 0:
+
+    if buying_price_jpy <= 0:
+        return 0
+    if weight_g <= 0:
         weight_g = 100
 
     if currency == "THB":
@@ -61,12 +67,12 @@ def calculate_net_price(buying_price_jpy, weight_g, currency="THB", rate_jpy=Non
 
     return 0
 
-# --- 2. STREAMLIT ALL-IN-ONE UI ---
+# --- 2. STREAMLIT UI ---
 
 st.title("🛍️ Shopee Mass Upload & Auto Price Calculator (ครบจบในหน้าเดียว)")
 st.caption("กรอกข้อมูลสินค้า เลือกตลาดเป้าหมาย คำนวณราคาอัตโนมัติ และส่งออกไฟล์ Excel ได้ทันที")
 
-# --- Control Panel (ส่วนตั้งค่าระบบคำนวณราคา) ---
+# Control Panel
 st.subheader("⚙️ 1. ตั้งค่าการคำนวณราคา (Target Market & Exchange Rates)")
 col1, col2, col3 = st.columns(3)
 
@@ -81,60 +87,55 @@ with col3:
     default_weight = st.number_input("น้ำหนักเริ่มต้นสินค้า (กรัม)", value=300, step=50)
 
 st.markdown("---")
-
-# --- Data Input & Calculation Table (ตารางลงข้อมูลและคำนวณราคา) ---
 st.subheader("📝 2. จัดการข้อมูลสินค้า / Variation / ต้นทุน / คำนวณราคาขาย")
 
-# สร้าง Mockup Data ตัวอย่างหากยังไม่มีข้อมูล
-if "product_data" not in st.session_state:
-    st.session_state.product_data = pd.DataFrame([
-        {
-            "Category ID": 1001,
-            "Parent SKU": "SHIRT-001",
-            "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
-            "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
-            "Variation 1 Name": "สี",
-            "Variation 1 Option": "Red",
-            "Variation 2 Name": "ไซส์",
-            "Variation 2 Option": "S",
-            "SKU": "SHIRT-001-RED-S",
-            "Buying Price (JPY)": 1200,
-            "Weight (g)": default_weight,
-            "Stock": 50
-        },
-        {
-            "Category ID": 1001,
-            "Parent SKU": "SHIRT-001",
-            "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
-            "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
-            "Variation 1 Name": "สี",
-            "Variation 1 Option": "Red",
-            "Variation 2 Name": "ไซส์",
-            "Variation 2 Option": "M",
-            "SKU": "SHIRT-001-RED-M",
-            "Buying Price (JPY)": 1200,
-            "Weight (g)": default_weight,
-            "Stock": 50
-        },
-        {
-            "Category ID": 1001,
-            "Parent SKU": "SHIRT-001",
-            "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
-            "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
-            "Variation 1 Name": "สี",
-            "Variation 1 Option": "Black",
-            "Variation 2 Name": "ไซส์",
-            "Variation 2 Option": "L",
-            "SKU": "SHIRT-001-BLK-L",
-            "Buying Price (JPY)": 1500,
-            "Weight (g)": default_weight,
-            "Stock": 30
-        }
-    ])
+# โครงสร้างข้อมูลเริ่มต้น
+default_data = [
+    {
+        "Category ID": 1001,
+        "Parent SKU": "SHIRT-001",
+        "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
+        "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
+        "Variation 1 Name": "สี",
+        "Variation 1 Option": "Red",
+        "Variation 2 Name": "ไซส์",
+        "Variation 2 Option": "S",
+        "SKU": "SHIRT-001-RED-S",
+        "Buying Price (JPY)": 1200,
+        "Weight (g)": default_weight,
+        "Stock": 50
+    },
+    {
+        "Category ID": 1001,
+        "Parent SKU": "SHIRT-001",
+        "Product Name": "เสื้อเชิ้ตลายสก๊อต Cotton 100%",
+        "Description": "เสื้อเชิ้ตคุณภาพสูง นำเข้าจากญี่ปุ่น",
+        "Variation 1 Name": "สี",
+        "Variation 1 Option": "Red",
+        "Variation 2 Name": "ไซส์",
+        "Variation 2 Option": "M",
+        "SKU": "SHIRT-001-RED-M",
+        "Buying Price (JPY)": 1200,
+        "Weight (g)": default_weight,
+        "Stock": 50
+    }
+]
 
-# คำนวณราคา Net Price อัตโนมัติทุกครั้งที่มีการเปลี่ยนค่า
+# Reset Data หาก Key ขาดหาย
+if "product_data" not in st.session_state or not isinstance(st.session_state.product_data, pd.DataFrame):
+    st.session_state.product_data = pd.DataFrame(default_data)
+
 df_display = st.session_state.product_data.copy()
-df_display[f"Selling Price ({currency})"] = df_display.apply(
+
+# ตรวจสอบคอลัมน์ที่จำเป็น
+required_cols = ["Parent SKU", "Product Name", "Variation 1 Option", "Variation 2 Option", "SKU", "Buying Price (JPY)", "Weight (g)", "Stock", "Category ID", "Description"]
+for col in required_cols:
+    if col not in df_display.columns:
+        df_display[col] = ""
+
+# คำนวณ Net Price
+price_col_name = f"Selling Price ({currency})"
+df_display[price_col_name] = df_display.apply(
     lambda row: calculate_net_price(
         buying_price_jpy=row.get("Buying Price (JPY)", 0),
         weight_g=row.get("Weight (g)", default_weight),
@@ -143,20 +144,20 @@ df_display[f"Selling Price ({currency})"] = df_display.apply(
     ), axis=1
 )
 
-# จัดลำดับคอลัมน์ให้อ่านง่าย
+# ลิสต์คอลัมน์ตามลำดับที่ถูกต้อง
 cols_order = [
     "Parent SKU", "Product Name", "Variation 1 Option", "Variation 2 Option", 
-    "SKU", "Buying Price (JPY)", "Weight (g)", f"Selling Price ({currency})", "Stock", 
+    "SKU", "Buying Price (JPY)", "Weight (g)", price_col_name, "Stock", 
     "Category ID", "Description"
 ]
 
-# ตาราง Data Editor ให้ผู้ใช้แก้ไขได้ในหน้าเดียว
+# แสดงผล Data Editor
 edited_df = st.data_editor(
     df_display[cols_order],
     column_config={
         "Buying Price (JPY)": st.column_config.NumberColumn("Buying Price (JPY)", min_value=0, format="%d ¥"),
         "Weight (g)": st.column_config.NumberColumn("Weight (g)", min_value=1, format="%d g"),
-        f"Selling Price ({currency})": st.column_config.NumberColumn(f"Calculated Net Price ({currency})", disabled=True, format="%d " + currency),
+        price_col_name: st.column_config.NumberColumn(f"Net Price ({currency})", disabled=True, format="%d " + currency),
         "Stock": st.column_config.NumberColumn("Stock", min_value=0, format="%d"),
     },
     use_container_width=True,
@@ -165,7 +166,7 @@ edited_df = st.data_editor(
 
 st.session_state.product_data = edited_df
 
-# --- 3. Export Excel ---
+# Export Excel
 st.markdown("---")
 st.subheader("📥 3. ดาวน์โหลดไฟล์ Excel สำหรับ Mass Upload")
 
