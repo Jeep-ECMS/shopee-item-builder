@@ -1,5 +1,6 @@
 import streamlit as st
 import openpyxl
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 import io
 import itertools
 import pandas as pd
@@ -141,11 +142,12 @@ LANG_TEXTS = {
         "p_name": "ชื่อสินค้า",
         "weight": "น้ำหนักสินค้าเริ่มต้น (g)",
         "p_desc": "รายละเอียดสินค้า",
-        "cover_img": "URL รูปภาพปกหลัก (Cover Image)",
+        "cover_img": "URL รูปภาพปกหลัก & รูปสินค้า (คั่นด้วย , จะกระจายไป Column U-AC อัตโนมัติ)",
+        "cover_img_help": "ใส่ URL คั่นด้วยเครื่องหมายจุลภาค รูปแรก = Cover Image, รูปถัดไป = Item Image 1-8",
         "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
         "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
         "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (1 รูปต่อ 1 ตัวเลือก คั่นด้วย ,)",
-        "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1 เช่น ตัวเลือกคือ แดง, ดำ ให้ใส่ url_red, url_black",
+        "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1",
         "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
         "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
@@ -183,7 +185,8 @@ LANG_TEXTS = {
         "p_name": "Product Name",
         "weight": "Default Weight (g)",
         "p_desc": "Product Description",
-        "cover_img": "Cover Image URL",
+        "cover_img": "Cover Image & Item Images URLs (comma-separated, auto-splits to U-AC)",
+        "cover_img_help": "First URL = Cover Image, subsequent = Item Image 1-8",
         "v1_name": "Variation 1 Name (e.g., Color)",
         "v1_opts": "Variation 1 Options (comma separated)",
         "v1_imgs": "Variation 1 Image URLs (1 per option, comma separated)",
@@ -225,7 +228,8 @@ LANG_TEXTS = {
         "p_name": "商品名",
         "weight": "デフォルト重量 (g)",
         "p_desc": "商品説明",
-        "cover_img": "メインカバー画像URL",
+        "cover_img": "カバー画像URL (カンマ区切りでU-AC列に自動展開)",
+        "cover_img_help": "1つ目＝カバー画像、2つ目以降＝商品画像1〜8",
         "v1_name": "バリエーション1名称 (例: 色)",
         "v1_opts": "バリエーション1の選択肢 (カンマ区切り)",
         "v1_imgs": "バリエーション1の画像URL (各選択肢1枚、カンマ区切り)",
@@ -302,7 +306,7 @@ if "products" not in st.session_state:
             "product_name": T["default_pname"],
             "weight": 500.0,
             "product_desc": T["default_pdesc"],
-            "cover_image": "https://example.com/cover.jpg",
+            "cover_image": "https://example.com/cover.jpg, https://example.com/img1.jpg, https://example.com/img2.jpg",
             "v1_name": T["default_v1_name"],
             "v1_options": T["default_v1_opts"],
             "v1_images": "https://example.com/wine.jpg, https://example.com/white.jpg",
@@ -366,7 +370,7 @@ for idx, p in enumerate(st.session_state.products):
     with c3:
         p["product_desc"] = st.text_area(T["p_desc"], value=p.get("product_desc", ""), key=f"desc_{p_id}")
 
-    p["cover_image"] = st.text_input(T["cover_img"], value=p.get("cover_image", ""), key=f"cimg_{p_id}")
+    p["cover_image"] = st.text_input(T["cover_img"], value=p.get("cover_image", ""), help=T["cover_img_help"], key=f"cimg_{p_id}")
 
     cv1, cv2 = st.columns(2)
     with cv1:
@@ -528,7 +532,6 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
     ws = wb.active
     ws.title = "Template"
 
-    # Header แถวที่ 1 (A = Col 1, I = Col 9 [Parent SKU], J = Col 10 [Variation Integration No.])
     header_row1 = [
         "Category", "Product Name", "Product Description", "Maximum Purchase Quantity", 
         "Maximum Purchase Quantity - Start Date", "Maximum Purchase Quantity - Time Period (in Days)", 
@@ -610,10 +613,9 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         v1_imgs = p_data["v1_imgs"]
         df_vars = p_data["variations_table"]
         
-        c_k = p_data["cost_key"]
-        w_k = p_data["weight_key"]
         pr_k = p_data["price_key"]
         st_k = p_data["stock_key"]
+        w_k = p_data["weight_key"]
 
         v1_img_dict = {}
         for i, opt1_val in enumerate(v1_opts_list):
@@ -626,7 +628,6 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
             ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
             
-            # 📌 ระบุตำแหน่ง Parent SKU (Column I -> index 9) และ Variation Integration No. (Column J -> index 10)
             ws.cell(row=current_row, column=9, value=p_sku)
             ws.cell(row=current_row, column=10, value=integration_no)
             
@@ -643,11 +644,64 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             ws.cell(row=current_row, column=18, value=row["SKU"])
             
             if idx == 0:
-                ws.cell(row=current_row, column=21, value=cover_img)
+                # 📌 แยก URL รูปภาพด้วยเครื่องหมาย (,) และกระจายลง Column U ถึง AC (Column 21 ถึง 29) อัตโนมัติ
+                cover_imgs_list = [x.strip() for x in cover_img.split(",") if x.strip()]
+                for img_i, img_url in enumerate(cover_imgs_list):
+                    if img_i < 9:  # U ถึง AC มีทั้งหมด 9 ช่อง (Column 21-29)
+                        ws.cell(row=current_row, column=21 + img_i, value=img_url)
+
                 ws.cell(row=current_row, column=30, value=row[w_k] / 1000.0)
                 ws.cell(row=current_row, column=34, value="On")
 
             start_row += 1
+
+    header_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    header_font = Font(name="Calibri", size=10, bold=True, color="000000")
+    data_font = Font(name="Calibri", size=10, color="000000")
+    
+    wrap_alignment = Alignment(wrap_text=True, vertical="center", horizontal="left")
+    header_alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    
+    thin_border = Border(
+        left=Side(style='thin', color='D3D3D3'),
+        right=Side(style='thin', color='D3D3D3'),
+        top=Side(style='thin', color='D3D3D3'),
+        bottom=Side(style='thin', color='D3D3D3')
+    )
+
+    ws.row_dimensions[1].height = 25
+    ws.row_dimensions[2].height = 18
+    ws.row_dimensions[3].height = 30
+    ws.row_dimensions[4].height = 25
+    ws.row_dimensions[5].height = 20
+
+    for r in range(6, start_row):
+        ws.row_dimensions[r].height = 28
+
+    max_col = len(header_row1)
+    for r in range(1, start_row):
+        for c in range(1, max_col + 1):
+            cell = ws.cell(row=r, column=c)
+            cell.border = thin_border
+            
+            if r <= 5:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = header_alignment
+            else:
+                cell.font = data_font
+                cell.alignment = wrap_alignment
+
+    column_widths = {
+        "A": 15, "B": 35, "C": 45, "D": 15, "E": 15, "F": 15, "G": 15, "H": 15,
+        "I": 25, "J": 25, "K": 20, "L": 20, "M": 30, "N": 20, "O": 20, "P": 15,
+        "Q": 12, "R": 25, "S": 20, "T": 30, "U": 35, "V": 30, "W": 30, "X": 30,
+        "Y": 30, "Z": 30, "AA": 30, "AB": 30, "AC": 30, "AD": 15, "AE": 12,
+        "AF": 12, "AG": 12, "AH": 20, "AI": 15, "AJ": 20
+    }
+    
+    for col_letter, width in column_widths.items():
+        ws.column_dimensions[col_letter].width = width
 
     output = io.BytesIO()
     wb.save(output)
