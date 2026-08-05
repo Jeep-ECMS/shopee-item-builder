@@ -11,13 +11,9 @@ st.set_page_config(page_title="Shopee Auto Price & Mass Upload Builder", layout=
 # --- 0. API ดึงอัตราแลกเปลี่ยน REALTIME (THB -> JPY และ PHP -> JPY) ---
 @st.cache_data(ttl=3600)
 def fetch_base_rates():
-    """
-    ดึงอัตราแลกเปลี่ยน THB -> JPY และ PHP -> JPY แบบ Real-time
-    """
     default_rates = {"THB": 4.73, "PHP": 2.65}
     rates_out = {}
     
-    # 1. ดึง THB -> JPY
     try:
         url_thb = "https://open.er-api.com/v6/latest/THB"
         req = urllib.request.Request(url_thb, headers={'User-Agent': 'Mozilla/5.0'})
@@ -29,7 +25,6 @@ def fetch_base_rates():
     except Exception:
         rates_out["THB"] = default_rates["THB"]
 
-    # 2. ดึง PHP -> JPY
     try:
         url_php = "https://open.er-api.com/v6/latest/PHP"
         req = urllib.request.Request(url_php, headers={'User-Agent': 'Mozilla/5.0'})
@@ -250,7 +245,7 @@ LANG_TEXTS = {
         "success_msg": "✅ 生成成功！ 合計 {count} 件の商品。",
         "btn_download": "📥 Shopeeアップロード用Excelをダウンロード",
         "default_pname": "高品質スニーカー",
-        "default_pdesc": "履き心地が良く快適なスポーツシューズ。",
+        "default_pdesc": "履き心地ที่良く快適なスポーツシューズ。",
         "default_v1_name": "カラー",
         "default_v1_opts": "WINE, WHITE",
         "default_v2_name": "サイズ",
@@ -296,7 +291,6 @@ with col_rate:
 
 st.markdown("---")
 
-# Initialize persistent session state for products
 if "products" not in st.session_state:
     st.session_state.products = [
         {
@@ -344,12 +338,10 @@ with col_btn1:
         st.rerun()
 
 updated_products_data = []
-
-# Loop over products
 prod_index_to_remove = None
 
 for idx, p in enumerate(st.session_state.products):
-    p_id = p.get("id", idx) # ป้องกัน KeyError 'id' จาก session state เก่า
+    p_id = p.get("id", idx)
     st.markdown("---")
     col_title, col_del = st.columns([8, 2])
     with col_title:
@@ -362,14 +354,11 @@ for idx, p in enumerate(st.session_state.products):
     c1, c2, c3 = st.columns(3)
     with c1:
         p["category_id"] = st.text_input(T["cat_id"], value=p.get("category_id", ""), key=f"cat_{p_id}")
-        
-        # 📌 แบ่งช่อง Parent SKU และ Variation Integration No. อยู่ข้างๆ กัน
         col_psku, col_integ = st.columns(2)
         with col_psku:
             p["parent_sku"] = st.text_input(T["parent_sku"], value=p.get("parent_sku", ""), key=f"psku_{p_id}")
         with col_integ:
             p["integration_no"] = st.text_input(T["integration_no"], value=p.get("integration_no", ""), key=f"integ_{p_id}")
-            
         p["brand"] = st.text_input(T["brand"], value=p.get("brand", ""), key=f"brand_{p_id}")
     with c2:
         p["product_name"] = st.text_input(T["p_name"], value=p.get("product_name", ""), key=f"name_{p_id}")
@@ -392,7 +381,6 @@ for idx, p in enumerate(st.session_state.products):
     list_v2 = [x.strip() for x in p["v2_options"].split(",") if x.strip()] if p["v2_name"] else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
-    # --- ส่วนการตั้งค่าด่วน แยกปุ่มแต่ละช่องอย่างเป็นอิสระ ---
     st.write(T["batch_title"])
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
     
@@ -420,7 +408,6 @@ for idx, p in enumerate(st.session_state.products):
     price_key = "selling_price"
     stock_key = "stock"
 
-    # สร้างหรืออัปเดตตารางตราบเท่าที่สินค้านี้ยังถูกเก็บไว้
     if df_state_key not in st.session_state:
         grid_data = []
         for opt1, opt2 in variations:
@@ -476,7 +463,6 @@ for idx, p in enumerate(st.session_state.products):
 
     df_var = st.session_state[df_state_key]
 
-    # คำนวณราคา Selling Price (THB)
     df_var[price_key] = df_var.apply(
         lambda row: calculate_net_price(
             buying_price_jpy=row[cost_key],
@@ -528,7 +514,6 @@ for idx, p in enumerate(st.session_state.products):
         "stock_key": stock_key
     })
 
-# จัดการลบสินค้าเมื่อมีการกดปุ่มลบ
 if prod_index_to_remove is not None:
     removed_p = st.session_state.products.pop(prod_index_to_remove)
     rem_id = removed_p.get("id", prod_index_to_remove)
@@ -539,14 +524,78 @@ if prod_index_to_remove is not None:
 # --- 4. EXPORT EXCEL ---
 st.markdown("---")
 if st.button(T["btn_generate"], type="primary", use_container_width=True):
-    try:
-        wb = openpyxl.load_workbook("Shopee_template.xlsx")
-        ws = wb["Template"] if "Template" in wb.sheetnames else wb.active
-    except Exception:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Template"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Template"
 
+    # 📌 กำหนด Header ทั้ง 5 บรรทัดตามภาพตัวอย่าง Shopee Mass Upload
+    header_row1 = [
+        "Category", "Product Name", "Product Description", "Maximum Purchase Quantity", 
+        "Maximum Purchase Quantity - Start Date", "Maximum Purchase Quantity - Time Period (in Days)", 
+        "Maximum Purchase Quantity - End Date", "Minimum Purchase Quantity", "Parent SKU", 
+        "Variation Integration No.", "Variation Name1", "Option for Variation 1", "Image per Variation", 
+        "Variation Name2", "Option for Variation 2", "Price", "Stock", "SKU", "Size Chart Template", 
+        "Size Chart Image", "Cover image", "Item Image 1", "Item Image 2", "Item Image 3", 
+        "Item Image 4", "Item Image 5", "Item Image 6", "Item Image 7", "Item Image 8", "Weight", 
+        "Length", "Width", "Height", "International Express - ส่งจากต่างประเทศ (Japan)", 
+        "Pre-order DTS", "Fail Reason"
+    ]
+
+    header_row2 = [
+        "Optional", "Mandatory", "Mandatory", "Optional", "Conditional Mandatory", 
+        "Conditional Mandatory", "Conditional Mandatory", "Optional", "Optional", 
+        "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", 
+        "Conditional Mandatory", "Conditional Mandatory", "Mandatory", "Conditional Mandatory", 
+        "Optional", "Conditional Mandatory", "Conditional Mandatory", "Mandatory", "Optional", 
+        "Optional", "Optional", "Optional", "Optional", "Optional", "Optional", "Optional", 
+        "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", 
+        "Optional", "Conditional Mandatory", "Optional"
+    ]
+
+    header_row3 = [
+        "Indicate the appropriate category ID for each product.", "Product name should include product brand and model.", 
+        "A good product description enhances the quality of your listing.", "[Per Order + Per Time Period]", 
+        "Please select a MaxPQ start date.", "[Per Time Period only]", "Please select a MaxPQ end date", 
+        "MPQ is an item level field.", "Parent SKU is used to identify parent products.", 
+        "Mandatory for products with variations.", "Please indicate the first variation name.", 
+        "Indicate the first variation value.", "Upload an image per variation.", "Indicate the second variation name.", 
+        "Please indicate the second variation value.", "Input your product price.", "Input your product stock.", 
+        "SKU is a unique identifier.", "Please enter the size chart template ID.", "You only need to fill in either size chart.", 
+        "Upload the URL of your main product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", 
+        "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", 
+        "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", 
+        "Input your product weight.", "Fill up all dimensions.", "Input your product width.", "Input your product height.", 
+        "Please toggle 'on'", "Pre-order days to ship (DTS)", ""
+    ]
+
+    header_row4 = [
+        "Choose your desired category ID from the Category Tree.", "Please input 20 to 255 characters.", 
+        "Please input 60 to 5000 characters.", "Please input from 1 to 999,999.", "YYYY-MM-DD", 
+        "Please input from 1 to 365.", "YYYY-MM-DD", "Minimum purchase quantity only can be a positive integer.", 
+        "Please input 1-100 characters.", "Input 1 to 100 characters.", "Input from 1 to 14 characters.", 
+        "Input from 1 to 30 characters.", "Enter the URL of this product image.", "Input from 1 to 14 characters.", 
+        "Input from 1 to 30 characters.", "Input price.", "Input stock.", "Input less than 100 characters.", 
+        "Please enter size chart template ID.", "Size: Max 2Mb", "Size: max 2.0mb", "Size: max 2.0mb", 
+        "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", 
+        "Size: max 2.0mb", "Size: max 2.0mb", "Please input 0.00 to 1000000.00", "Please input 0 to 1000000", 
+        "Please input 0 to 1000000", "Please input 0 to 1000000", "On/Off", "Pre-order DTS range", ""
+    ]
+
+    header_row5 = [
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", 
+        "Format accepted: PDF, JPG, JPEG, PNG", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", 
+        "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", 
+        "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", 
+        "Format accepted: JPG, JPEG, PNG.", "", "", "", "", "", "", ""
+    ]
+
+    ws.append(header_row1)
+    ws.append(header_row2)
+    ws.append(header_row3)
+    ws.append(header_row4)
+    ws.append(header_row5)
+
+    # เริ่มเขียนข้อมูลสินค้าจากแถวที่ 6
     start_row = 6
 
     for p_data in updated_products_data:
@@ -577,8 +626,8 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             ws.cell(row=current_row, column=1, value=cat_id)
             ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
             ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
-            ws.cell(row=current_row, column=9, value=integration_no) # 📌 บันทึก Variation Integration No. ลง Excel Column 9 (I)
-            ws.cell(row=current_row, column=10, value=p_sku)
+            ws.cell(row=current_row, column=9, value=p_sku)
+            ws.cell(row=current_row, column=10, value=integration_no)
             
             ws.cell(row=current_row, column=11, value=v1_name)
             ws.cell(row=current_row, column=12, value=row["Opt1"])
