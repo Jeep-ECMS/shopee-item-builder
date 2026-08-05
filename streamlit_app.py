@@ -141,6 +141,7 @@ LANG_TEXTS = {
         "product_num": "🛒 สินค้าชิ้นที่",
         "cat_id": "Category ID / รหัสหมวดหมู่",
         "parent_sku": "Parent SKU / รหัสอ้างอิงหลัก",
+        "integration_no": "Variation Integration No.",
         "brand": "แบรนด์ (Brand)",
         "p_name": "ชื่อสินค้า",
         "weight": "น้ำหนักสินค้าเริ่มต้น (g)",
@@ -182,6 +183,7 @@ LANG_TEXTS = {
         "product_num": "🛒 Product #",
         "cat_id": "Category ID",
         "parent_sku": "Parent SKU",
+        "integration_no": "Variation Integration No.",
         "brand": "Brand",
         "p_name": "Product Name",
         "weight": "Default Weight (g)",
@@ -223,6 +225,7 @@ LANG_TEXTS = {
         "product_num": "🛒 商品 #",
         "cat_id": "カテゴリーID",
         "parent_sku": "親SKU (Parent SKU)",
+        "integration_no": "Variation Integration No.",
         "brand": "ブランド (Brand)",
         "p_name": "商品名",
         "weight": "デフォルト重量 (g)",
@@ -300,6 +303,7 @@ if "products" not in st.session_state:
             "id": 0,
             "category_id": "120039",
             "parent_sku": "361086-18",
+            "integration_no": "",
             "brand": "No Brand",
             "product_name": T["default_pname"],
             "weight": 500.0,
@@ -325,6 +329,7 @@ with col_btn1:
             "id": new_id,
             "category_id": "100000",
             "parent_sku": f"ITEM-{new_id+1:03d}",
+            "integration_no": "",
             "brand": "No Brand",
             "product_name": f"{T['product_num']} {len(st.session_state.products)+1}",
             "weight": 300.0,
@@ -344,11 +349,11 @@ updated_products_data = []
 prod_index_to_remove = None
 
 for idx, p in enumerate(st.session_state.products):
-    p_id = p["id"]
+    p_id = p.get("id", idx) # ป้องกัน KeyError 'id' จาก session state เก่า
     st.markdown("---")
     col_title, col_del = st.columns([8, 2])
     with col_title:
-        st.subheader(f"{T['product_num']}{idx + 1}: {p['product_name']}")
+        st.subheader(f"{T['product_num']}{idx + 1}: {p.get('product_name', '')}")
     with col_del:
         if len(st.session_state.products) > 1:
             if st.button(f"{T['del_product']}", key=f"del_btn_{p_id}"):
@@ -356,25 +361,32 @@ for idx, p in enumerate(st.session_state.products):
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        p["category_id"] = st.text_input(T["cat_id"], value=p["category_id"], key=f"cat_{p_id}")
-        p["parent_sku"] = st.text_input(T["parent_sku"], value=p["parent_sku"], key=f"psku_{p_id}")
-        p["brand"] = st.text_input(T["brand"], value=p["brand"], key=f"brand_{p_id}")
+        p["category_id"] = st.text_input(T["cat_id"], value=p.get("category_id", ""), key=f"cat_{p_id}")
+        
+        # 📌 แบ่งช่อง Parent SKU และ Variation Integration No. อยู่ข้างๆ กัน
+        col_psku, col_integ = st.columns(2)
+        with col_psku:
+            p["parent_sku"] = st.text_input(T["parent_sku"], value=p.get("parent_sku", ""), key=f"psku_{p_id}")
+        with col_integ:
+            p["integration_no"] = st.text_input(T["integration_no"], value=p.get("integration_no", ""), key=f"integ_{p_id}")
+            
+        p["brand"] = st.text_input(T["brand"], value=p.get("brand", ""), key=f"brand_{p_id}")
     with c2:
-        p["product_name"] = st.text_input(T["p_name"], value=p["product_name"], key=f"name_{p_id}")
-        p["weight"] = st.number_input(T["weight"], value=float(p["weight"]), step=10.0, format="%.1f", key=f"w_{p_id}")
+        p["product_name"] = st.text_input(T["p_name"], value=p.get("product_name", ""), key=f"name_{p_id}")
+        p["weight"] = st.number_input(T["weight"], value=float(p.get("weight", 300.0)), step=10.0, format="%.1f", key=f"w_{p_id}")
     with c3:
-        p["product_desc"] = st.text_area(T["p_desc"], value=p["product_desc"], key=f"desc_{p_id}")
+        p["product_desc"] = st.text_area(T["p_desc"], value=p.get("product_desc", ""), key=f"desc_{p_id}")
 
-    p["cover_image"] = st.text_input(T["cover_img"], value=p["cover_image"], key=f"cimg_{p_id}")
+    p["cover_image"] = st.text_input(T["cover_img"], value=p.get("cover_image", ""), key=f"cimg_{p_id}")
 
     cv1, cv2 = st.columns(2)
     with cv1:
-        p["v1_name"] = st.text_input(T["v1_name"], value=p["v1_name"], key=f"v1n_{p_id}")
-        p["v1_options"] = st.text_input(T["v1_opts"], value=p["v1_options"], key=f"v1o_{p_id}")
-        p["v1_images"] = st.text_input(T["v1_imgs"], value=p["v1_images"], help=T["v1_imgs_help"], key=f"v1i_{p_id}")
+        p["v1_name"] = st.text_input(T["v1_name"], value=p.get("v1_name", ""), key=f"v1n_{p_id}")
+        p["v1_options"] = st.text_input(T["v1_opts"], value=p.get("v1_options", ""), key=f"v1o_{p_id}")
+        p["v1_images"] = st.text_input(T["v1_imgs"], value=p.get("v1_images", ""), help=T["v1_imgs_help"], key=f"v1i_{p_id}")
     with cv2:
-        p["v2_name"] = st.text_input(T["v2_name"], value=p["v2_name"], key=f"v2n_{p_id}")
-        p["v2_options"] = st.text_input(T["v2_opts"], value=p["v2_options"], key=f"v2o_{p_id}")
+        p["v2_name"] = st.text_input(T["v2_name"], value=p.get("v2_name", ""), key=f"v2n_{p_id}")
+        p["v2_options"] = st.text_input(T["v2_opts"], value=p.get("v2_options", ""), key=f"v2o_{p_id}")
 
     list_v1 = [x.strip() for x in p["v1_options"].split(",") if x.strip()]
     list_v2 = [x.strip() for x in p["v2_options"].split(",") if x.strip()] if p["v2_name"] else [""]
@@ -499,6 +511,7 @@ for idx, p in enumerate(st.session_state.products):
     updated_products_data.append({
         "cat_id": p["category_id"],
         "p_sku": p["parent_sku"],
+        "integration_no": p["integration_no"],
         "brand": p["brand"],
         "p_name": p["product_name"],
         "weight": p["weight"],
@@ -518,7 +531,7 @@ for idx, p in enumerate(st.session_state.products):
 # จัดการลบสินค้าเมื่อมีการกดปุ่มลบ
 if prod_index_to_remove is not None:
     removed_p = st.session_state.products.pop(prod_index_to_remove)
-    rem_id = removed_p["id"]
+    rem_id = removed_p.get("id", prod_index_to_remove)
     if f"df_data_{rem_id}" in st.session_state:
         del st.session_state[f"df_data_{rem_id}"]
     st.rerun()
@@ -539,6 +552,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
     for p_data in updated_products_data:
         cat_id = p_data["cat_id"]
         p_sku = p_data["p_sku"]
+        integration_no = p_data["integration_no"]
         p_name = p_data["p_name"]
         p_desc = p_data["p_desc"]
         cover_img = p_data["cover_img"]
@@ -553,8 +567,6 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         pr_k = p_data["price_key"]
         st_k = p_data["stock_key"]
 
-        # 🎯 สร้าง Dictionary จับคู่รูปภาพ 1:1 กับ รายการตัวเลือกที่ 1 (Opt1)
-        # ตัวอย่าง: สี WINE -> url_wine, สี WHITE -> url_white
         v1_img_dict = {}
         for i, opt1_val in enumerate(v1_opts_list):
             v1_img_dict[opt1_val] = v1_imgs[i] if i < len(v1_imgs) else ""
@@ -565,13 +577,11 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             ws.cell(row=current_row, column=1, value=cat_id)
             ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
             ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
+            ws.cell(row=current_row, column=9, value=integration_no) # 📌 บันทึก Variation Integration No. ลง Excel Column 9 (I)
             ws.cell(row=current_row, column=10, value=p_sku)
             
             ws.cell(row=current_row, column=11, value=v1_name)
             ws.cell(row=current_row, column=12, value=row["Opt1"])
-            
-            # ✅ ดึงรูปภาพตามตัวเลือกที่ 1 ( Opt1 ) มาใส่
-            # ทุกตัวเลือกที่ 2 (เช่น ไซส์ 23, 24, 25, 26) ที่อยู่ภายใต้สี WINE จะถูกใส่รูปสี WINE รูปเดียวกันโดยอัตโนมัติ
             ws.cell(row=current_row, column=13, value=v1_img_dict.get(row["Opt1"], ""))
             
             if v2_name and row["Opt2"]:
