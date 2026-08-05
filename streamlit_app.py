@@ -145,7 +145,7 @@ LANG_TEXTS = {
         "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
         "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
         "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (1 รูปต่อ 1 ตัวเลือก คั่นด้วย ,)",
-        "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1 เช่น ตัวเลือกคือ แดง, ดำ ให้ใส่ url_red, url_black (รูปนี้จะใช้กับทุกไซส์/ตัวเลือกที่ 2 ของสีนั้นๆ)",
+        "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1 เช่น ตัวเลือกคือ แดง, ดำ ให้ใส่ url_red, url_black",
         "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
         "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
@@ -187,7 +187,7 @@ LANG_TEXTS = {
         "v1_name": "Variation 1 Name (e.g., Color)",
         "v1_opts": "Variation 1 Options (comma separated)",
         "v1_imgs": "Variation 1 Image URLs (1 per option, comma separated)",
-        "v1_imgs_help": "Provide 1 image URL per Variation 1 option. It will automatically apply across all Variation 2 sub-options.",
+        "v1_imgs_help": "Provide 1 image URL per Variation 1 option.",
         "v2_name": "Variation 2 Name (e.g., Size) [Optional]",
         "v2_opts": "Variation 2 Options (comma separated)",
         "batch_title": "⚡ Quick Setup (Apply individual value to all variations):",
@@ -229,7 +229,7 @@ LANG_TEXTS = {
         "v1_name": "バリエーション1名称 (例: 色)",
         "v1_opts": "バリエーション1の選択肢 (カンマ区切り)",
         "v1_imgs": "バリエーション1の画像URL (各選択肢1枚、カンマ区切り)",
-        "v1_imgs_help": "バリエーション1の各項目ごとに1枚のURLを入力してください（全サイズ/バリエーション2に共通適用されます）。",
+        "v1_imgs_help": "バリエーション1の各項目ごとに1枚のURLを入力してください。",
         "v2_name": "バリエーション2名称 (例: サイズ) [任意]",
         "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
         "batch_title": "⚡ 個別一括設定 (全バリエーションに適用):",
@@ -245,7 +245,7 @@ LANG_TEXTS = {
         "success_msg": "✅ 生成成功！ 合計 {count} 件の商品。",
         "btn_download": "📥 Shopeeアップロード用Excelをダウンロード",
         "default_pname": "高品質スニーカー",
-        "default_pdesc": "履き心地ที่良く快適なスポーツシューズ。",
+        "default_pdesc": "履き心地が良く快適なスポーツシューズ。",
         "default_v1_name": "カラー",
         "default_v1_opts": "WINE, WHITE",
         "default_v2_name": "サイズ",
@@ -528,7 +528,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
     ws = wb.active
     ws.title = "Template"
 
-    # 📌 กำหนด Header ทั้ง 5 บรรทัดตามภาพตัวอย่าง Shopee Mass Upload
+    # Header แถวที่ 1 (A = Col 1, I = Col 9 [Parent SKU], J = Col 10 [Variation Integration No.])
     header_row1 = [
         "Category", "Product Name", "Product Description", "Maximum Purchase Quantity", 
         "Maximum Purchase Quantity - Start Date", "Maximum Purchase Quantity - Time Period (in Days)", 
@@ -595,7 +595,6 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
     ws.append(header_row4)
     ws.append(header_row5)
 
-    # เริ่มเขียนข้อมูลสินค้าจากแถวที่ 6
     start_row = 6
 
     for p_data in updated_products_data:
@@ -626,6 +625,8 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             ws.cell(row=current_row, column=1, value=cat_id)
             ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
             ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
+            
+            # 📌 ระบุตำแหน่ง Parent SKU (Column I -> index 9) และ Variation Integration No. (Column J -> index 10)
             ws.cell(row=current_row, column=9, value=p_sku)
             ws.cell(row=current_row, column=10, value=integration_no)
             
