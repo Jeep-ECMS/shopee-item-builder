@@ -102,17 +102,9 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
 
     if currency == "THB":
         rate = rate_to_jpy if rate_to_jpy else 4.73
-        
-        # Column AB = W58 / $AB$1 (Buying Price THB)
         buying_price_thb = buying_price_jpy / rate if rate > 0 else 0
-        
-        # Column T = SLS Fee
         sls_fee = get_sls_shipping_fee_thb(weight_g)
-        
-        # Column AC = Transportation in JP (Fix 70 THB)
         transportation_jp_thb = 70.0
-        
-        # Column R = (T79 + AB79 + AC79) / Profit Factor (0.7)
         net_price = (sls_fee + buying_price_thb + transportation_jp_thb) / margin_factor
         return round(net_price)
 
@@ -156,7 +148,8 @@ LANG_TEXTS = {
         "cover_img": "URL รูปภาพปกหลัก (Cover Image)",
         "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
         "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
-        "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
+        "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (1 รูปต่อ 1 ตัวเลือก คั่นด้วย ,)",
+        "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1 เช่น ตัวเลือกคือ แดง, ดำ ให้ใส่ url_red, url_black (รูปนี้จะใช้กับทุกไซส์/ตัวเลือกที่ 2 ของสีนั้นๆ)",
         "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
         "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
         "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
@@ -167,15 +160,16 @@ LANG_TEXTS = {
         "profit_col": "Profit Rate (%)",
         "price_col": "Selling Price",
         "stock_col": "Stock (ชิ้น)",
+        "sku_col": "SKU (แก้ไขได้)",
         "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
         "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
         "btn_download": "📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
-        "default_pname": "เสื้อยืดคอตตอนผ้านุ่มพิเศษ",
-        "default_pdesc": "เสื้อยืดคุณภาพดี ใส่สบาย",
+        "default_pname": "รองเท้าสปอร์ตผ้าใบคุณภาพสูง",
+        "default_pdesc": "รองเท้าสปอร์ต นุ่ม สวมใส่สบาย",
         "default_v1_name": "สี",
-        "default_v1_opts": "แดง, ดำ",
+        "default_v1_opts": "WINE, WHITE",
         "default_v2_name": "ไซส์",
-        "default_v2_opts": "S, M",
+        "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
     },
     "EN": {
         "title": "📦 Shopee Mass Upload Generator & Price Calculator",
@@ -195,7 +189,8 @@ LANG_TEXTS = {
         "cover_img": "Cover Image URL",
         "v1_name": "Variation 1 Name (e.g., Color)",
         "v1_opts": "Variation 1 Options (comma separated)",
-        "v1_imgs": "Variation 1 Image URLs (comma separated)",
+        "v1_imgs": "Variation 1 Image URLs (1 per option, comma separated)",
+        "v1_imgs_help": "Provide 1 image URL per Variation 1 option. It will automatically apply across all Variation 2 sub-options.",
         "v2_name": "Variation 2 Name (e.g., Size) [Optional]",
         "v2_opts": "Variation 2 Options (comma separated)",
         "batch_title": "⚡ Quick Setup (Apply individual value to all variations):",
@@ -206,15 +201,16 @@ LANG_TEXTS = {
         "profit_col": "Profit Rate (%)",
         "price_col": "Selling Price",
         "stock_col": "Stock",
+        "sku_col": "SKU (Editable)",
         "btn_generate": "🚀 Generate Combined Shopee Excel File",
         "success_msg": "✅ Successfully generated! Total {count} product(s).",
         "btn_download": "📥 Download Excel File for Shopee",
-        "default_pname": "Premium Cotton T-Shirt",
-        "default_pdesc": "High quality soft t-shirt, comfortable to wear.",
+        "default_pname": "High Quality Sneakers",
+        "default_pdesc": "Soft and comfortable sport shoes.",
         "default_v1_name": "Color",
-        "default_v1_opts": "Red, Black",
+        "default_v1_opts": "WINE, WHITE",
         "default_v2_name": "Size",
-        "default_v2_opts": "S, M",
+        "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
     },
     "JA": {
         "title": "📦 Shopee 一括出品ファイル生成 & 自動価格計算ツール",
@@ -234,7 +230,8 @@ LANG_TEXTS = {
         "cover_img": "メインカバー画像URL",
         "v1_name": "バリエーション1名称 (例: 色)",
         "v1_opts": "バリエーション1の選択肢 (カンマ区切り)",
-        "v1_imgs": "バリエーション1の画像URL (カンマ区切り)",
+        "v1_imgs": "バリエーション1の画像URL (各選択肢1枚、カンマ区切り)",
+        "v1_imgs_help": "バリエーション1の各項目ごとに1枚のURLを入力してください（全サイズ/バリエーション2に共通適用されます）。",
         "v2_name": "バリエーション2名称 (例: サイズ) [任意]",
         "v2_opts": "バリエーション2の選択肢 (カンマ区切り)",
         "batch_title": "⚡ 個別一括設定 (全バリエーションに適用):",
@@ -245,15 +242,16 @@ LANG_TEXTS = {
         "profit_col": "Profit Rate (%)",
         "price_col": "Selling Price",
         "stock_col": "在庫数",
+        "sku_col": "SKU (編集可能)",
         "btn_generate": "🚀 全商品まとめてShopee用Excelファイルを生成",
         "success_msg": "✅ 生成成功！ 合計 {count} 件の商品。",
         "btn_download": "📥 Shopeeアップロード用Excelをダウンロード",
-        "default_pname": "プレミアムコットンTシャツ",
-        "default_pdesc": "高品質で着心地の良いTシャツです。",
+        "default_pname": "高品質スニーカー",
+        "default_pdesc": "履き心地が良く快適なスポーツシューズ。",
         "default_v1_name": "カラー",
-        "default_v1_opts": "レッド, ブラック",
+        "default_v1_opts": "WINE, WHITE",
         "default_v2_name": "サイズ",
-        "default_v2_opts": "S, M",
+        "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
     }
 }
 
@@ -295,30 +293,38 @@ with col_rate:
 
 st.markdown("---")
 
+# Initialize persistent session state for products
 if "products" not in st.session_state:
     st.session_state.products = [
         {
+            "id": 0,
             "category_id": "120039",
-            "parent_sku": "SHIRT-001",
+            "parent_sku": "361086-18",
             "brand": "No Brand",
             "product_name": T["default_pname"],
-            "weight": 300.0,
+            "weight": 500.0,
             "product_desc": T["default_pdesc"],
-            "cover_image": "https://example.com/shirt_cover.jpg",
+            "cover_image": "https://example.com/cover.jpg",
             "v1_name": T["default_v1_name"],
             "v1_options": T["default_v1_opts"],
-            "v1_images": "https://example.com/red.jpg, https://example.com/black.jpg",
+            "v1_images": "https://example.com/wine.jpg, https://example.com/white.jpg",
             "v2_name": T["default_v2_name"],
             "v2_options": T["default_v2_opts"],
         }
     ]
 
+if "next_prod_id" not in st.session_state:
+    st.session_state.next_prod_id = 1
+
 col_btn1, col_btn2 = st.columns([1, 4])
 with col_btn1:
     if st.button(T["add_product"]):
+        new_id = st.session_state.next_prod_id
+        st.session_state.next_prod_id += 1
         st.session_state.products.append({
+            "id": new_id,
             "category_id": "100000",
-            "parent_sku": f"ITEM-{len(st.session_state.products)+1:03d}",
+            "parent_sku": f"ITEM-{new_id+1:03d}",
             "brand": "No Brand",
             "product_name": f"{T['product_num']} {len(st.session_state.products)+1}",
             "weight": 300.0,
@@ -334,41 +340,44 @@ with col_btn1:
 
 updated_products_data = []
 
+# Loop over products
+prod_index_to_remove = None
+
 for idx, p in enumerate(st.session_state.products):
+    p_id = p["id"]
     st.markdown("---")
     col_title, col_del = st.columns([8, 2])
     with col_title:
         st.subheader(f"{T['product_num']}{idx + 1}: {p['product_name']}")
     with col_del:
         if len(st.session_state.products) > 1:
-            if st.button(f"{T['del_product']}", key=f"del_{idx}"):
-                st.session_state.products.pop(idx)
-                st.rerun()
+            if st.button(f"{T['del_product']}", key=f"del_btn_{p_id}"):
+                prod_index_to_remove = idx
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        cat_id = st.text_input(T["cat_id"], value=p["category_id"], key=f"cat_{idx}")
-        p_sku = st.text_input(T["parent_sku"], value=p["parent_sku"], key=f"psku_{idx}")
-        brand = st.text_input(T["brand"], value=p["brand"], key=f"brand_{idx}")
+        p["category_id"] = st.text_input(T["cat_id"], value=p["category_id"], key=f"cat_{p_id}")
+        p["parent_sku"] = st.text_input(T["parent_sku"], value=p["parent_sku"], key=f"psku_{p_id}")
+        p["brand"] = st.text_input(T["brand"], value=p["brand"], key=f"brand_{p_id}")
     with c2:
-        p_name = st.text_input(T["p_name"], value=p["product_name"], key=f"name_{idx}")
-        default_weight = st.number_input(T["weight"], value=float(p["weight"]), step=10.0, format="%.1f", key=f"w_{idx}")
+        p["product_name"] = st.text_input(T["p_name"], value=p["product_name"], key=f"name_{p_id}")
+        p["weight"] = st.number_input(T["weight"], value=float(p["weight"]), step=10.0, format="%.1f", key=f"w_{p_id}")
     with c3:
-        p_desc = st.text_area(T["p_desc"], value=p["product_desc"], key=f"desc_{idx}")
+        p["product_desc"] = st.text_area(T["p_desc"], value=p["product_desc"], key=f"desc_{p_id}")
 
-    cover_img = st.text_input(T["cover_img"], value=p["cover_image"], key=f"cimg_{idx}")
+    p["cover_image"] = st.text_input(T["cover_img"], value=p["cover_image"], key=f"cimg_{p_id}")
 
     cv1, cv2 = st.columns(2)
     with cv1:
-        v1_name = st.text_input(T["v1_name"], value=p["v1_name"], key=f"v1n_{idx}")
-        v1_opts = st.text_input(T["v1_opts"], value=p["v1_options"], key=f"v1o_{idx}")
-        v1_imgs = st.text_input(T["v1_imgs"], value=p["v1_images"], key=f"v1i_{idx}")
+        p["v1_name"] = st.text_input(T["v1_name"], value=p["v1_name"], key=f"v1n_{p_id}")
+        p["v1_options"] = st.text_input(T["v1_opts"], value=p["v1_options"], key=f"v1o_{p_id}")
+        p["v1_images"] = st.text_input(T["v1_imgs"], value=p["v1_images"], help=T["v1_imgs_help"], key=f"v1i_{p_id}")
     with cv2:
-        v2_name = st.text_input(T["v2_name"], value=p["v2_name"], key=f"v2n_{idx}")
-        v2_opts = st.text_input(T["v2_opts"], value=p["v2_options"], key=f"v2o_{idx}")
+        p["v2_name"] = st.text_input(T["v2_name"], value=p["v2_name"], key=f"v2n_{p_id}")
+        p["v2_options"] = st.text_input(T["v2_opts"], value=p["v2_options"], key=f"v2o_{p_id}")
 
-    list_v1 = [x.strip() for x in v1_opts.split(",") if x.strip()]
-    list_v2 = [x.strip() for x in v2_opts.split(",") if x.strip()] if v2_name else [""]
+    list_v1 = [x.strip() for x in p["v1_options"].split(",") if x.strip()]
+    list_v2 = [x.strip() for x in p["v2_options"].split(",") if x.strip()] if p["v2_name"] else [""]
     variations = list(itertools.product(list_v1, list_v2))
 
     # --- ส่วนการตั้งค่าด่วน แยกปุ่มแต่ละช่องอย่างเป็นอิสระ ---
@@ -376,22 +385,22 @@ for idx, p in enumerate(st.session_state.products):
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
     
     with b_col1:
-        batch_cost = st.number_input(T["cost_col"], value=1000, step=100, key=f"b_cost_{idx}")
-        apply_cost = st.button(f"{T['btn_apply']} {T['cost_col']}", key=f"btn_apply_cost_{idx}")
+        batch_cost = st.number_input(T["cost_col"], value=1590, step=100, key=f"b_cost_{p_id}")
+        apply_cost = st.button(f"{T['btn_apply']} {T['cost_col']}", key=f"btn_apply_cost_{p_id}")
         
     with b_col2:
-        batch_weight = st.number_input(T["weight_col"], value=float(default_weight), step=10.0, format="%.1f", key=f"b_weight_{idx}")
-        apply_weight = st.button(f"{T['btn_apply']} {T['weight_col']}", key=f"btn_apply_weight_{idx}")
+        batch_weight = st.number_input(T["weight_col"], value=float(p["weight"]), step=10.0, format="%.1f", key=f"b_weight_{p_id}")
+        apply_weight = st.button(f"{T['btn_apply']} {T['weight_col']}", key=f"btn_apply_weight_{p_id}")
         
     with b_col3:
-        batch_profit = st.number_input(T["profit_col"], value=30.0, step=1.0, format="%.1f", key=f"b_profit_{idx}")
-        apply_profit = st.button(f"{T['btn_apply']} {T['profit_col']}", key=f"btn_apply_profit_{idx}")
+        batch_profit = st.number_input(T["profit_col"], value=30.0, step=1.0, format="%.1f", key=f"b_profit_{p_id}")
+        apply_profit = st.button(f"{T['btn_apply']} {T['profit_col']}", key=f"btn_apply_profit_{p_id}")
         
     with b_col4:
-        batch_stock = st.number_input(T["stock_col"], value=5, step=1, key=f"b_stock_{idx}")
-        apply_stock = st.button(f"{T['btn_apply']} {T['stock_col']}", key=f"btn_apply_stock_{idx}")
+        batch_stock = st.number_input(T["stock_col"], value=2, step=1, key=f"b_stock_{p_id}")
+        apply_stock = st.button(f"{T['btn_apply']} {T['stock_col']}", key=f"btn_apply_stock_{p_id}")
 
-    df_state_key = f"df_data_{idx}"
+    df_state_key = f"df_data_{p_id}"
     
     cost_key = "cost_jpy"
     weight_key = "weight_g"
@@ -399,7 +408,7 @@ for idx, p in enumerate(st.session_state.products):
     price_key = "selling_price"
     stock_key = "stock"
 
-    # สร้างหรืออัปเดตตารางตามปุ่มที่ถูกกด
+    # สร้างหรืออัปเดตตารางตราบเท่าที่สินค้านี้ยังถูกเก็บไว้
     if df_state_key not in st.session_state:
         grid_data = []
         for opt1, opt2 in variations:
@@ -408,7 +417,7 @@ for idx, p in enumerate(st.session_state.products):
 
             grid_data.append({
                 "Variation": var_title,
-                "SKU": f"{p_sku}{sku_suffix}",
+                "SKU": f"{p['parent_sku']}{sku_suffix}",
                 cost_key: int(batch_cost),
                 weight_key: float(batch_weight),
                 profit_key: float(batch_profit),
@@ -423,25 +432,26 @@ for idx, p in enumerate(st.session_state.products):
         new_grid_data = []
         for opt1, opt2 in variations:
             var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
-            sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
+            sku_default = f"{p['parent_sku']}" + (f"-{opt1}" if opt1 else "") + (f"-{opt2}" if opt2 else "")
             
             match = df_existing[df_existing["Variation"] == var_title]
             
-            # ตรวจสอบการกดปุ่มเพื่ออัปเดตเฉพาะค่าที่เลือก
             if not match.empty:
-                c_val = int(batch_cost) if apply_cost else match.iloc[0].get(cost_key, 1000)
-                w_val = float(batch_weight) if apply_weight else match.iloc[0].get(weight_key, float(default_weight))
+                c_val = int(batch_cost) if apply_cost else match.iloc[0].get(cost_key, 1590)
+                w_val = float(batch_weight) if apply_weight else match.iloc[0].get(weight_key, float(p["weight"]))
                 p_val = float(batch_profit) if apply_profit else match.iloc[0].get(profit_key, 30.0)
-                s_val = int(batch_stock) if apply_stock else match.iloc[0].get(stock_key, 5)
+                s_val = int(batch_stock) if apply_stock else match.iloc[0].get(stock_key, 2)
+                sku_val = match.iloc[0].get("SKU", sku_default)
             else:
-                c_val = int(batch_cost) if apply_cost else 1000
-                w_val = float(batch_weight) if apply_weight else float(default_weight)
+                c_val = int(batch_cost) if apply_cost else 1590
+                w_val = float(batch_weight) if apply_weight else float(p["weight"])
                 p_val = float(batch_profit) if apply_profit else 30.0
-                s_val = int(batch_stock) if apply_stock else 5
+                s_val = int(batch_stock) if apply_stock else 2
+                sku_val = sku_default
 
             new_grid_data.append({
                 "Variation": var_title,
-                "SKU": f"{p_sku}{sku_suffix}",
+                "SKU": sku_val,
                 cost_key: c_val,
                 weight_key: w_val,
                 profit_key: p_val,
@@ -470,7 +480,7 @@ for idx, p in enumerate(st.session_state.products):
         df_var,
         column_config={
             "Variation": st.column_config.Column(disabled=True),
-            "SKU": st.column_config.Column(disabled=True),
+            "SKU": st.column_config.TextColumn(T["sku_col"], disabled=False),
             cost_key: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
             weight_key: st.column_config.NumberColumn(T["weight_col"], min_value=1.0, format="%.1f g"),
             profit_key: st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
@@ -480,28 +490,38 @@ for idx, p in enumerate(st.session_state.products):
             "Opt2": None
         },
         hide_index=True,
-        key=f"editor_{idx}"
+        key=f"editor_{p_id}"
     )
 
     st.session_state[df_state_key] = edited_df
 
+    v1_imgs_list = [x.strip() for x in p["v1_images"].split(",") if x.strip()]
     updated_products_data.append({
-        "cat_id": cat_id,
-        "p_sku": p_sku,
-        "brand": brand,
-        "p_name": p_name,
-        "weight": default_weight,
-        "p_desc": p_desc,
-        "cover_img": cover_img,
-        "v1_name": v1_name,
-        "v1_imgs": [x.strip() for x in v1_imgs.split(",") if x.strip()],
-        "v2_name": v2_name,
+        "cat_id": p["category_id"],
+        "p_sku": p["parent_sku"],
+        "brand": p["brand"],
+        "p_name": p["product_name"],
+        "weight": p["weight"],
+        "p_desc": p["product_desc"],
+        "cover_img": p["cover_image"],
+        "v1_name": p["v1_name"],
+        "v1_opts_list": list_v1,
+        "v1_imgs": v1_imgs_list,
+        "v2_name": p["v2_name"],
         "variations_table": edited_df,
         "cost_key": cost_key,
         "weight_key": weight_key,
         "price_key": price_key,
         "stock_key": stock_key
     })
+
+# จัดการลบสินค้าเมื่อมีการกดปุ่มลบ
+if prod_index_to_remove is not None:
+    removed_p = st.session_state.products.pop(prod_index_to_remove)
+    rem_id = removed_p["id"]
+    if f"df_data_{rem_id}" in st.session_state:
+        del st.session_state[f"df_data_{rem_id}"]
+    st.rerun()
 
 # --- 4. EXPORT EXCEL ---
 st.markdown("---")
@@ -524,6 +544,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         cover_img = p_data["cover_img"]
         v1_name = p_data["v1_name"]
         v2_name = p_data["v2_name"]
+        v1_opts_list = p_data["v1_opts_list"]
         v1_imgs = p_data["v1_imgs"]
         df_vars = p_data["variations_table"]
         
@@ -532,10 +553,11 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         pr_k = p_data["price_key"]
         st_k = p_data["stock_key"]
 
-        unique_v1 = df_vars["Opt1"].unique().tolist()
+        # 🎯 สร้าง Dictionary จับคู่รูปภาพ 1:1 กับ รายการตัวเลือกที่ 1 (Opt1)
+        # ตัวอย่าง: สี WINE -> url_wine, สี WHITE -> url_white
         v1_img_dict = {}
-        for i, opt in enumerate(unique_v1):
-            v1_img_dict[opt] = v1_imgs[i] if i < len(v1_imgs) else ""
+        for i, opt1_val in enumerate(v1_opts_list):
+            v1_img_dict[opt1_val] = v1_imgs[i] if i < len(v1_imgs) else ""
 
         for idx, row in df_vars.iterrows():
             current_row = start_row
@@ -547,6 +569,9 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             
             ws.cell(row=current_row, column=11, value=v1_name)
             ws.cell(row=current_row, column=12, value=row["Opt1"])
+            
+            # ✅ ดึงรูปภาพตามตัวเลือกที่ 1 ( Opt1 ) มาใส่
+            # ทุกตัวเลือกที่ 2 (เช่น ไซส์ 23, 24, 25, 26) ที่อยู่ภายใต้สี WINE จะถูกใส่รูปสี WINE รูปเดียวกันโดยอัตโนมัติ
             ws.cell(row=current_row, column=13, value=v1_img_dict.get(row["Opt1"], ""))
             
             if v2_name and row["Opt2"]:
