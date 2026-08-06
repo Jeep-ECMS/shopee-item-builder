@@ -16,7 +16,6 @@ DB_FILE = "shopee_products.db"
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # ตารางเก็บข้อมูลหลักของสินค้า
     c.execute('''
         CREATE TABLE IF NOT EXISTS products (
             p_id INTEGER PRIMARY KEY,
@@ -35,7 +34,6 @@ def init_db():
             v2o TEXT
         )
     ''')
-    # ตารางเก็บตารางตัวเลือก (Variations/Price/Stock)
     c.execute('''
         CREATE TABLE IF NOT EXISTS variations (
             p_id INTEGER,
@@ -53,7 +51,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_product_to_db(p_id, p_data):
+def save_product_to_db(p_id):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
@@ -61,10 +59,20 @@ def save_product_to_db(p_id, p_data):
         (p_id, cat_id, psku, integ, brand, name, weight, desc, cimg, v1n, v1o, v1i, v2n, v2o)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        p_id, p_data.get("cat_id", ""), p_data.get("psku", ""), p_data.get("integ", ""),
-        p_data.get("brand", ""), p_data.get("name", ""), p_data.get("weight", 300.0),
-        p_data.get("desc", ""), p_data.get("cimg", ""), p_data.get("v1n", ""),
-        p_data.get("v1o", ""), p_data.get("v1i", ""), p_data.get("v2n", ""), p_data.get("v2o", "")
+        p_id, 
+        st.session_state.get(f"cat_{p_id}", ""),
+        st.session_state.get(f"psku_{p_id}", ""),
+        st.session_state.get(f"integ_{p_id}", ""),
+        st.session_state.get(f"brand_{p_id}", ""),
+        st.session_state.get(f"name_{p_id}", ""),
+        float(st.session_state.get(f"w_{p_id}", 300.0)),
+        st.session_state.get(f"desc_{p_id}", ""),
+        st.session_state.get(f"cimg_{p_id}", ""),
+        st.session_state.get(f"v1n_{p_id}", ""),
+        st.session_state.get(f"v1o_{p_id}", ""),
+        st.session_state.get(f"v1i_{p_id}", ""),
+        st.session_state.get(f"v2n_{p_id}", ""),
+        st.session_state.get(f"v2o_{p_id}", "")
     ))
     conn.commit()
     conn.close()
@@ -80,10 +88,10 @@ def save_variations_to_db(p_id, df_vars):
             INSERT INTO variations (p_id, variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            p_id, row.get("Variation", ""), row.get("SKU", ""),
+            p_id, str(row.get("Variation", "")), str(row.get("SKU", "")),
             int(row.get("cost_jpy", 0)), float(row.get("weight_g", 0)),
             float(row.get("profit_rate", 0)), int(row.get("stock", 0)),
-            row.get("Opt1", ""), row.get("Opt2", "")
+            str(row.get("Opt1", "")), str(row.get("Opt2", ""))
         ))
     conn.commit()
     conn.close()
@@ -153,9 +161,7 @@ def clear_entire_db():
     conn.commit()
     conn.close()
 
-# เริ่มต้นสร้างตาราง DB
 init_db()
-
 
 # --- API ดึงอัตราแลกเปลี่ยน REALTIME ---
 @st.cache_data(ttl=3600)
@@ -184,8 +190,6 @@ def fetch_base_rates():
 
     return rates_out
 
-
-# --- คำนวณราคาปลอดภัย ---
 SLS_RATES_THB = [
     (100, 93), (200, 105), (300, 129), (400, 153), (500, 177),
     (600, 200), (700, 230), (800, 250), (900, 270), (1000, 300),
@@ -261,67 +265,82 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
 
     return 0
 
-
-# --- ภาษา ---
-LANG_TEXTS = {
-    "TH": {
-        "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ (มี Auto-save 💾)",
-        "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Real-time Exchange Rate)",
-        "currency_select": "เลือกตลาดเป้าหมาย",
-        "rate_label": "อัตราแลกเปลี่ยน Real-time (1 {curr} -> JPY)",
-        "rate_info": "💡 ดึงข้อมูลอัตราแลกเปลี่ยน Real-time ล่าสุดอัตโนมัติ",
-        "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
-        "clear_all": "🗑️ ล้างข้อมูลสินค้าทั้งหมด",
-        "del_product": "🗑️ ลบสินค้านี้",
-        "product_num": "🛒 สินค้าชิ้นที่",
-        "cat_id": "Category ID / รหัสหมวดหมู่",
-        "parent_sku": "Parent SKU / รหัสอ้างอิงหลัก",
-        "integration_no": "Variation Integration No.",
-        "brand": "แบรนด์ (Brand)",
-        "p_name": "ชื่อสินค้า",
-        "weight": "น้ำหนักสินค้าเริ่มต้น (g)",
-        "p_desc": "รายละเอียดสินค้า",
-        "cover_img": "URL รูปภาพปกหลัก & รูปสินค้า (คั่นด้วย , จะกระจายไป Column U-AC อัตโนมัติ)",
-        "cover_img_help": "ใส่ URL คั่นด้วยเครื่องหมายจุลภาค รูปแรก = Cover Image, รูปถัดไป = Item Image 1-8",
-        "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
-        "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
-        "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (1 รูปต่อ 1 ตัวเลือก คั่นด้วย ,)",
-        "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1",
-        "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
-        "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
-        "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
-        "btn_apply": "⚡ นำไปใช้",
-        "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
-        "cost_col": "Buying Price (JPY)",
-        "weight_col": "Weight (g)",
-        "profit_col": "Profit Rate (%)",
-        "price_col": "Selling Price",
-        "stock_col": "Stock (ชิ้น)",
-        "sku_col": "SKU (แก้ไขได้)",
-        "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
-        "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
-        "btn_download": "📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
-        "default_pname": "รองเท้าสปอร์ตผ้าใบคุณภาพสูง",
-        "default_pdesc": "รองเท้าสปอร์ต นุ่ม สวมใส่สบาย",
-        "default_v1_name": "สี",
-        "default_v1_opts": "WINE, WHITE",
-        "default_v2_name": "ไซส์",
-        "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
-    }
+# --- ข้อความภาษาไทย ---
+T = {
+    "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ (มี Auto-save 💾)",
+    "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Real-time Exchange Rate)",
+    "currency_select": "เลือกตลาดเป้าหมาย",
+    "rate_label": "อัตราแลกเปลี่ยน Real-time (1 {curr} -> JPY)",
+    "rate_info": "💡 ดึงข้อมูลอัตราแลกเปลี่ยน Real-time ล่าสุดอัตโนมัติ",
+    "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
+    "clear_all": "🗑️ ล้างข้อมูลสินค้าทั้งหมด",
+    "del_product": "🗑️ ลบสินค้านี้",
+    "product_num": "🛒 สินค้าชิ้นที่",
+    "cat_id": "Category ID / รหัสหมวดหมู่",
+    "parent_sku": "Parent SKU / รหัสอ้างอิงหลัก",
+    "integration_no": "Variation Integration No.",
+    "brand": "แบรนด์ (Brand)",
+    "p_name": "ชื่อสินค้า",
+    "weight": "น้ำหนักสินค้าเริ่มต้น (g)",
+    "p_desc": "รายละเอียดสินค้า",
+    "cover_img": "URL รูปภาพปกหลัก & รูปสินค้า (คั่นด้วย ,)",
+    "cover_img_help": "ใส่ URL คั่นด้วยเครื่องหมายจุลภาค รูปแรก = Cover Image",
+    "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
+    "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
+    "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
+    "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1",
+    "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
+    "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
+    "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
+    "btn_apply": "⚡ นำไปใช้",
+    "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
+    "cost_col": "Buying Price (JPY)",
+    "weight_col": "Weight (g)",
+    "profit_col": "Profit Rate (%)",
+    "price_col": "Selling Price",
+    "stock_col": "Stock (ชิ้น)",
+    "sku_col": "SKU (แก้ไขได้)",
+    "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
+    "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
+    "btn_download": "📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
+    "default_pname": "รองเท้าสปอร์ตผ้าใบคุณภาพสูง",
+    "default_pdesc": "รองเท้าสปอร์ต นุ่ม สวมใส่สบาย",
+    "default_v1_name": "สี",
+    "default_v1_opts": "WINE, WHITE",
+    "default_v2_name": "ไซส์",
+    "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
 }
 
-T = LANG_TEXTS["TH"]
 st.title(T["title"])
 
-# --- LOAD DATA FROM DB ON INITIAL START ---
+# --- ฟังก์ชันเริ่มต้นข้อมูลสินค้าใหม่ ---
+def init_product_defaults(p_id, idx):
+    if f"name_{p_id}" not in st.session_state:
+        st.session_state[f"cat_{p_id}"] = "120039"
+        st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}"
+        st.session_state[f"integ_{p_id}"] = ""
+        st.session_state[f"brand_{p_id}"] = "No Brand"
+        st.session_state[f"name_{p_id}"] = T["default_pname"] if p_id == 0 else f"{T['product_num']}{idx+1}"
+        st.session_state[f"w_{p_id}"] = 300.0
+        st.session_state[f"desc_{p_id}"] = T["default_pdesc"]
+        st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg"
+        st.session_state[f"v1n_{p_id}"] = T["default_v1_name"]
+        st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"]
+        st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg"
+        st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
+        st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
+
+# --- โหลดข้อมูลจาก DB ในการเปิดแอปครั้งแรก ---
 if "loaded_from_db" not in st.session_state:
     has_db_data = load_all_from_db()
     st.session_state.loaded_from_db = True
     if not has_db_data:
         st.session_state.products_list = [0]
         st.session_state.next_prod_id = 1
+        init_product_defaults(0, 0)
+        save_product_to_db(0)
 
-# --- GLOBAL CONTROL PANEL ---
+# --- CONTROL PANEL หลัก ---
 realtime_rates = fetch_base_rates()
 st.subheader(T["calc_setting"])
 col_cur, col_rate = st.columns(2)
@@ -345,9 +364,17 @@ st.markdown("---")
 col_btn1, col_btn2, col_space = st.columns([2, 2, 6])
 with col_btn1:
     if st.button(T["add_product"]):
+        # บันทึกสินค้าที่มีอยู่ทั้งหมดลง DB ก่อนสร้างชิ้นใหม่
+        for existing_id in st.session_state.products_list:
+            save_product_to_db(existing_id)
+            if f"df_data_{existing_id}" in st.session_state:
+                save_variations_to_db(existing_id, st.session_state[f"df_data_{existing_id}"])
+                
         new_id = st.session_state.next_prod_id
         st.session_state.next_prod_id += 1
         st.session_state.products_list.append(new_id)
+        init_product_defaults(new_id, len(st.session_state.products_list)-1)
+        save_product_to_db(new_id)
         st.rerun()
 
 with col_btn2:
@@ -358,6 +385,8 @@ with col_btn2:
                 del st.session_state[k]
         st.session_state.products_list = [0]
         st.session_state.next_prod_id = 1
+        init_product_defaults(0, 0)
+        save_product_to_db(0)
         st.rerun()
 
 updated_products_data = []
@@ -367,20 +396,7 @@ for idx, p_id in enumerate(st.session_state.products_list):
     st.markdown("---")
     col_title, col_del = st.columns([8, 2])
     
-    if f"name_{p_id}" not in st.session_state:
-        st.session_state[f"cat_{p_id}"] = "120039"
-        st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}"
-        st.session_state[f"integ_{p_id}"] = ""
-        st.session_state[f"brand_{p_id}"] = "No Brand"
-        st.session_state[f"name_{p_id}"] = T["default_pname"] if p_id == 0 else f"{T['product_num']}{idx+1}"
-        st.session_state[f"w_{p_id}"] = 300.0
-        st.session_state[f"desc_{p_id}"] = T["default_pdesc"]
-        st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg"
-        st.session_state[f"v1n_{p_id}"] = T["default_v1_name"]
-        st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"]
-        st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg"
-        st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
-        st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
+    init_product_defaults(p_id, idx)
 
     with col_title:
         st.subheader(f"{T['product_num']}{idx + 1}: {st.session_state.get(f'name_{p_id}', '')}")
@@ -413,13 +429,8 @@ for idx, p_id in enumerate(st.session_state.products_list):
         v2n_val = st.text_input(T["v2_name"], key=f"v2n_{p_id}")
         v2o_val = st.text_input(T["v2_opts"], key=f"v2o_{p_id}")
 
-    # AUTO-SAVE ข้อมูลฟิลด์ข้อความลงฐานข้อมูล SQLITE ทันทีที่แก้ไข
-    save_product_to_db(p_id, {
-        "cat_id": cat_id_val, "psku": psku_val, "integ": integ_val,
-        "brand": brand_val, "name": pname_val, "weight": weight_val,
-        "desc": pdesc_val, "cimg": cimg_val, "v1n": v1n_val,
-        "v1o": v1o_val, "v1i": v1i_val, "v2n": v2n_val, "v2o": v2o_val
-    })
+    # AUTO-SAVE ฟิลด์ข้อมูลหลักลง SQLITE
+    save_product_to_db(p_id)
 
     list_v1 = [x.strip() for x in v1o_val.split(",") if x.strip()] or ["Standard"]
     list_v2 = [x.strip() for x in v2o_val.split(",") if x.strip()] if v2n_val else [""]
@@ -459,33 +470,27 @@ for idx, p_id in enumerate(st.session_state.products_list):
             })
         st.session_state[df_state_key] = pd.DataFrame(grid_data)
     else:
+        # อัปเดตตารางโดยคงค่าเดิมที่ผู้ใช้เคยแก้ไขไว้ ไม่ล้างค่าทิ้ง
         df_existing = st.session_state[df_state_key]
-        new_grid_data = []
-        for opt1, opt2 in variations:
-            var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
-            sku_default = f"{psku_val}" + (f"-{opt1}" if opt1 else "") + (f"-{opt2}" if opt2 else "")
-            
-            match = df_existing[df_existing["Variation"] == var_title] if not df_existing.empty and "Variation" in df_existing.columns else pd.DataFrame()
-            
-            if not match.empty:
-                c_val = int(batch_cost) if apply_cost else match.iloc[0].get(cost_key, 1590)
-                w_val = float(batch_weight) if apply_weight else match.iloc[0].get(weight_key, float(weight_val if weight_val else 300.0))
-                p_val = float(batch_profit) if apply_profit else match.iloc[0].get(profit_key, 30.0)
-                s_val = int(batch_stock) if apply_stock else match.iloc[0].get(stock_key, 2)
-                sku_val = match.iloc[0].get("SKU", sku_default)
-            else:
-                c_val = int(batch_cost) if apply_cost else 1590
-                w_val = float(batch_weight) if apply_weight else float(weight_val if weight_val else 300.0)
-                p_val = float(batch_profit) if apply_profit else 30.0
-                s_val = int(batch_stock) if apply_stock else 2
-                sku_val = sku_default
+        if apply_cost or apply_weight or apply_profit or apply_stock:
+            new_grid_data = []
+            for opt1, opt2 in variations:
+                var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
+                sku_default = f"{psku_val}" + (f"-{opt1}" if opt1 else "") + (f"-{opt2}" if opt2 else "")
+                match = df_existing[df_existing["Variation"] == var_title] if not df_existing.empty and "Variation" in df_existing.columns else pd.DataFrame()
+                
+                c_val = int(batch_cost) if apply_cost else (match.iloc[0].get(cost_key, 1590) if not match.empty else 1590)
+                w_val = float(batch_weight) if apply_weight else (match.iloc[0].get(weight_key, float(weight_val if weight_val else 300.0)) if not match.empty else float(weight_val if weight_val else 300.0))
+                p_val = float(batch_profit) if apply_profit else (match.iloc[0].get(profit_key, 30.0) if not match.empty else 30.0)
+                s_val = int(batch_stock) if apply_stock else (match.iloc[0].get(stock_key, 2) if not match.empty else 2)
+                sku_val = match.iloc[0].get("SKU", sku_default) if not match.empty else sku_default
 
-            new_grid_data.append({
-                "Variation": var_title, "SKU": sku_val,
-                cost_key: c_val, weight_key: w_val, profit_key: p_val,
-                price_key: 0, stock_key: s_val, "Opt1": opt1, "Opt2": opt2
-            })
-        st.session_state[df_state_key] = pd.DataFrame(new_grid_data)
+                new_grid_data.append({
+                    "Variation": var_title, "SKU": sku_val,
+                    cost_key: c_val, weight_key: w_val, profit_key: p_val,
+                    price_key: 0, stock_key: s_val, "Opt1": opt1, "Opt2": opt2
+                })
+            st.session_state[df_state_key] = pd.DataFrame(new_grid_data)
 
     df_var = st.session_state[df_state_key]
 
@@ -516,7 +521,7 @@ for idx, p_id in enumerate(st.session_state.products_list):
 
     st.session_state[df_state_key] = edited_df
     
-    # AUTO-SAVE ตารางตัวเลือก (Price/SKU/Stock) ลงฐานข้อมูลทันที
+    # AUTO-SAVE ตารางตัวเลือก (Price/SKU/Stock) ลงฐานข้อมูล
     save_variations_to_db(p_id, edited_df)
 
     v1_imgs_list = [x.strip() for x in v1i_val.split(",") if x.strip()]
@@ -555,7 +560,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         "Pre-order DTS", "Fail Reason"
     ]
     header_row2 = ["Optional", "Mandatory", "Mandatory", "Optional", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Optional", "Optional", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Mandatory", "Conditional Mandatory", "Optional", "Conditional Mandatory", "Conditional Mandatory", "Mandatory", "Optional", "Optional", "Optional", "Optional", "Optional", "Optional", "Optional", "Optional", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Conditional Mandatory", "Optional", "Conditional Mandatory", "Optional"]
-    header_row3 = ["Indicate the appropriate category ID for each product.", "Product name should include product brand and model.", "A good product description enhances the quality of your listing.", "[Per Order + Per Time Period]", "Please select a MaxPQ start date.", "[Per Time Period only]", "Please select a MaxPQ end date", "MPQ is an item level field.", "Parent SKU is used to identify parent products.", "Mandatory for products with variations.", "Please indicate the first variation name.", "Indicate the first variation value.", "Upload an image per variation.", "Indicate the second variation name.", "Please indicate the second variation value.", "Input your product price.", "Input your product stock.", "SKU is a unique identifier.", "Please enter the size chart template ID.", "You only need to fill in either size chart.", "Upload the URL of your main product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Input your product weight.", "Fill up all dimensions.", "Input your product width.", "Input your product height.", "Please toggle 'on'", "Pre-order days to ship (DTS)", ""]
+    header_row3 = ["Indicate the appropriate category ID for each product.", "Product name should include product brand and model.", "A good product description enhances the quality of your listing.", "[Per Order + Per Time Period]", "Please select a MaxPQ start date.", "[Per Time Period only]", "Please select a MaxPQ end date", "MPQ is an item level field.", "Parent SKU is used to identify parent products.", "Mandatory for products with variations.", "Please indicate the first variation name.", "Indicate the first variation value.", "Upload an image per variation.", "Indicate the second variation name.", "Please indicate the second variation value.", "Input your product price.", "Input your product stock.", "SKU is a unique identifier.", "Please enter the size chart template ID.", "You only need to fill in either size chart.", "Upload the URL of your main product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Enter the URL of this product image.", "Input your product weight.", "Fill up all dimensions.", "Input your product width.", "Input your product height.", "Please toggle 'on'", "Pre-order DTS range", ""]
     header_row4 = ["Choose your desired category ID from the Category Tree.", "Please input 20 to 255 characters.", "Please input 60 to 5000 characters.", "Please input from 1 to 999,999.", "YYYY-MM-DD", "Please input from 1 to 365.", "YYYY-MM-DD", "Minimum purchase quantity only can be a positive integer.", "Please input 1-100 characters.", "Input 1 to 100 characters.", "Input from 1 to 14 characters.", "Input from 1 to 30 characters.", "Enter the URL of this product image.", "Input from 1 to 14 characters.", "Input from 1 to 30 characters.", "Input price.", "Input stock.", "Input less than 100 characters.", "Please enter size chart template ID.", "Size: Max 2Mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Size: max 2.0mb", "Please input 0.00 to 1000000.00", "Please input 0 to 1000000", "Please input 0 to 1000000", "Please input 0 to 1000000", "On/Off", "Pre-order DTS range", ""]
     header_row5 = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "Format accepted: PDF, JPG, JPEG, PNG", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "Format accepted: JPG, JPEG, PNG.", "", "", "", "", "", "", ""]
 
