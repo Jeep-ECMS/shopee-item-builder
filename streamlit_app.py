@@ -313,22 +313,26 @@ T = {
 
 st.title(T["title"])
 
-# --- ฟังก์ชันเริ่มต้นข้อมูลสินค้าใหม่ ---
+# --- CALLBACK ฟังก์ชันบันทึกข้อมูลทันทีเมื่อแก้ไขช่องกรอก ---
+def on_field_change(p_id):
+    save_product_to_db(p_id)
+
+# --- ฟังก์ชันเริ่มต้นข้อมูลสินค้าใหม่ (ตรวจละเอียดไม่ให้เขียนทับค่าเดิม) ---
 def init_product_defaults(p_id, idx):
+    if f"cat_{p_id}" not in st.session_state: st.session_state[f"cat_{p_id}"] = "120039"
+    if f"psku_{p_id}" not in st.session_state: st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}"
+    if f"integ_{p_id}" not in st.session_state: st.session_state[f"integ_{p_id}"] = ""
+    if f"brand_{p_id}" not in st.session_state: st.session_state[f"brand_{p_id}"] = "No Brand"
     if f"name_{p_id}" not in st.session_state:
-        st.session_state[f"cat_{p_id}"] = "120039"
-        st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}"
-        st.session_state[f"integ_{p_id}"] = ""
-        st.session_state[f"brand_{p_id}"] = "No Brand"
-        st.session_state[f"name_{p_id}"] = T["default_pname"] if p_id == 0 else f"{T['product_num']}{idx+1}"
-        st.session_state[f"w_{p_id}"] = 300.0
-        st.session_state[f"desc_{p_id}"] = T["default_pdesc"]
-        st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg"
-        st.session_state[f"v1n_{p_id}"] = T["default_v1_name"]
-        st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"]
-        st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg"
-        st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
-        st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
+        st.session_state[f"name_{p_id}"] = T["default_pname"] if idx == 0 else f"{T['product_num']}{idx+1}"
+    if f"w_{p_id}" not in st.session_state: st.session_state[f"w_{p_id}"] = 300.0
+    if f"desc_{p_id}" not in st.session_state: st.session_state[f"desc_{p_id}"] = T["default_pdesc"]
+    if f"cimg_{p_id}" not in st.session_state: st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg"
+    if f"v1n_{p_id}" not in st.session_state: st.session_state[f"v1n_{p_id}"] = T["default_v1_name"]
+    if f"v1o_{p_id}" not in st.session_state: st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"]
+    if f"v1i_{p_id}" not in st.session_state: st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg"
+    if f"v2n_{p_id}" not in st.session_state: st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
+    if f"v2o_{p_id}" not in st.session_state: st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
 
 # --- โหลดข้อมูลจาก DB ในการเปิดแอปครั้งแรก ---
 if "loaded_from_db" not in st.session_state:
@@ -407,30 +411,27 @@ for idx, p_id in enumerate(st.session_state.products_list):
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        cat_id_val = st.text_input(T["cat_id"], key=f"cat_{p_id}")
+        cat_id_val = st.text_input(T["cat_id"], key=f"cat_{p_id}", on_change=on_field_change, args=(p_id,))
         col_psku, col_integ = st.columns(2)
-        with col_psku: psku_val = st.text_input(T["parent_sku"], key=f"psku_{p_id}")
-        with col_integ: integ_val = st.text_input(T["integration_no"], key=f"integ_{p_id}")
-        brand_val = st.text_input(T["brand"], key=f"brand_{p_id}")
+        with col_psku: psku_val = st.text_input(T["parent_sku"], key=f"psku_{p_id}", on_change=on_field_change, args=(p_id,))
+        with col_integ: integ_val = st.text_input(T["integration_no"], key=f"integ_{p_id}", on_change=on_field_change, args=(p_id,))
+        brand_val = st.text_input(T["brand"], key=f"brand_{p_id}", on_change=on_field_change, args=(p_id,))
     with c2:
-        pname_val = st.text_input(T["p_name"], key=f"name_{p_id}")
-        weight_val = st.number_input(T["weight"], step=10.0, format="%.1f", key=f"w_{p_id}")
+        pname_val = st.text_input(T["p_name"], key=f"name_{p_id}", on_change=on_field_change, args=(p_id,))
+        weight_val = st.number_input(T["weight"], step=10.0, format="%.1f", key=f"w_{p_id}", on_change=on_field_change, args=(p_id,))
     with c3:
-        pdesc_val = st.text_area(T["p_desc"], key=f"desc_{p_id}")
+        pdesc_val = st.text_area(T["p_desc"], key=f"desc_{p_id}", on_change=on_field_change, args=(p_id,))
 
-    cimg_val = st.text_input(T["cover_img"], help=T["cover_img_help"], key=f"cimg_{p_id}")
+    cimg_val = st.text_input(T["cover_img"], help=T["cover_img_help"], key=f"cimg_{p_id}", on_change=on_field_change, args=(p_id,))
 
     cv1, cv2 = st.columns(2)
     with cv1:
-        v1n_val = st.text_input(T["v1_name"], key=f"v1n_{p_id}")
-        v1o_val = st.text_input(T["v1_opts"], key=f"v1o_{p_id}")
-        v1i_val = st.text_input(T["v1_imgs"], help=T["v1_imgs_help"], key=f"v1i_{p_id}")
+        v1n_val = st.text_input(T["v1_name"], key=f"v1n_{p_id}", on_change=on_field_change, args=(p_id,))
+        v1o_val = st.text_input(T["v1_opts"], key=f"v1o_{p_id}", on_change=on_field_change, args=(p_id,))
+        v1i_val = st.text_input(T["v1_imgs"], help=T["v1_imgs_help"], key=f"v1i_{p_id}", on_change=on_field_change, args=(p_id,))
     with cv2:
-        v2n_val = st.text_input(T["v2_name"], key=f"v2n_{p_id}")
-        v2o_val = st.text_input(T["v2_opts"], key=f"v2o_{p_id}")
-
-    # AUTO-SAVE ฟิลด์ข้อมูลหลักลง SQLITE
-    save_product_to_db(p_id)
+        v2n_val = st.text_input(T["v2_name"], key=f"v2n_{p_id}", on_change=on_field_change, args=(p_id,))
+        v2o_val = st.text_input(T["v2_opts"], key=f"v2o_{p_id}", on_change=on_field_change, args=(p_id,))
 
     list_v1 = [x.strip() for x in v1o_val.split(",") if x.strip()] or ["Standard"]
     list_v2 = [x.strip() for x in v2o_val.split(",") if x.strip()] if v2n_val else [""]
