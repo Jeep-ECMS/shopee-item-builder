@@ -65,7 +65,7 @@ def save_product_to_db(p_id):
         st.session_state.get(f"integ_{p_id}", ""),
         st.session_state.get(f"brand_{p_id}", ""),
         st.session_state.get(f"name_{p_id}", ""),
-        float(st.session_state.get(f"w_{p_id}", 300.0)),
+        float(st.session_state.get(f"w_{p_id}", 0.0)),
         st.session_state.get(f"desc_{p_id}", ""),
         st.session_state.get(f"cimg_{p_id}", ""),
         st.session_state.get(f"v1n_{p_id}", ""),
@@ -316,24 +316,38 @@ st.title(T["title"])
 def on_field_change(p_id):
     save_product_to_db(p_id)
 
-# --- ปรับปรุงจุดนี้: แยก Default ชิ้นแรก (Demo) กับ ชิ้นถัดไป (Blank) ---
+# --- ฟังก์ชันกำหนดค่าเริ่มต้น: สินค้าชิ้นที่ 1 (Demo) / สินค้าชิ้นที่ 2 เป็นต้นไป (Blank) ---
 def init_product_defaults(p_id, idx):
-    is_demo = (idx == 0)
+    is_demo = (idx == 0)  # เฉพาะสินค้าตัวแรกเท่านั้นที่มีค่าเริ่มต้น Demo
     
-    if f"cat_{p_id}" not in st.session_state: st.session_state[f"cat_{p_id}"] = "120039" if is_demo else ""
-    if f"psku_{p_id}" not in st.session_state: st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}" if is_demo else ""
-    if f"integ_{p_id}" not in st.session_state: st.session_state[f"integ_{p_id}"] = ""
-    if f"brand_{p_id}" not in st.session_state: st.session_state[f"brand_{p_id}"] = "No Brand" if is_demo else ""
-    if f"name_{p_id}" not in st.session_state:
-        st.session_state[f"name_{p_id}"] = T["default_pname"] if is_demo else f"สินค้าชิ้นที่ {idx+1}"
-    if f"w_{p_id}" not in st.session_state: st.session_state[f"w_{p_id}"] = 300.0
-    if f"desc_{p_id}" not in st.session_state: st.session_state[f"desc_{p_id}"] = T["default_pdesc"] if is_demo else ""
-    if f"cimg_{p_id}" not in st.session_state: st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg" if is_demo else ""
-    if f"v1n_{p_id}" not in st.session_state: st.session_state[f"v1n_{p_id}"] = T["default_v1_name"] if is_demo else ""
-    if f"v1o_{p_id}" not in st.session_state: st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"] if is_demo else ""
-    if f"v1i_{p_id}" not in st.session_state: st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg" if is_demo else ""
-    if f"v2n_{p_id}" not in st.session_state: st.session_state[f"v2n_{p_id}"] = T["default_v2_name"] if is_demo else ""
-    if f"v2o_{p_id}" not in st.session_state: st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"] if is_demo else ""
+    # จะกำหนดค่าเฉพาะกรณีที่ key ยังไม่เคยมีอยู่ใน session_state เท่านั้น
+    # ถ้าผู้ใช้กรอกข้อมูลแล้ว ค่าจะไม่ถูกเขียนทับ
+    if f"cat_{p_id}" not in st.session_state: 
+        st.session_state[f"cat_{p_id}"] = "120039" if is_demo else ""
+    if f"psku_{p_id}" not in st.session_state: 
+        st.session_state[f"psku_{p_id}"] = "361086-18" if is_demo else ""
+    if f"integ_{p_id}" not in st.session_state: 
+        st.session_state[f"integ_{p_id}"] = ""
+    if f"brand_{p_id}" not in st.session_state: 
+        st.session_state[f"brand_{p_id}"] = "No Brand" if is_demo else ""
+    if f"name_{p_id}" not in st.session_state: 
+        st.session_state[f"name_{p_id}"] = T["default_pname"] if is_demo else ""
+    if f"w_{p_id}" not in st.session_state: 
+        st.session_state[f"w_{p_id}"] = 300.0 if is_demo else 0.0
+    if f"desc_{p_id}" not in st.session_state: 
+        st.session_state[f"desc_{p_id}"] = T["default_pdesc"] if is_demo else ""
+    if f"cimg_{p_id}" not in st.session_state: 
+        st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg" if is_demo else ""
+    if f"v1n_{p_id}" not in st.session_state: 
+        st.session_state[f"v1n_{p_id}"] = T["default_v1_name"] if is_demo else ""
+    if f"v1o_{p_id}" not in st.session_state: 
+        st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"] if is_demo else ""
+    if f"v1i_{p_id}" not in st.session_state: 
+        st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg" if is_demo else ""
+    if f"v2n_{p_id}" not in st.session_state: 
+        st.session_state[f"v2n_{p_id}"] = T["default_v2_name"] if is_demo else ""
+    if f"v2o_{p_id}" not in st.session_state: 
+        st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"] if is_demo else ""
 
 if "loaded_from_db" not in st.session_state:
     has_db_data = load_all_from_db()
@@ -371,7 +385,8 @@ with col_btn1:
         new_id = st.session_state.next_prod_id
         st.session_state.next_prod_id += 1
         st.session_state.products_list.append(new_id)
-        init_product_defaults(new_id, len(st.session_state.products_list)-1)
+        # กำหนดค่าว่างให้สินค้าชิ้นใหม่ทันที
+        init_product_defaults(new_id, len(st.session_state.products_list) - 1)
         save_product_to_db(new_id)
         st.rerun()
 
@@ -396,8 +411,11 @@ for idx, p_id in enumerate(st.session_state.products_list):
     
     init_product_defaults(p_id, idx)
 
+    title_text = st.session_state.get(f'name_{p_id}', '')
+    display_title = title_text if title_text else f"สินค้าชิ้นที่ {idx + 1}"
+
     with col_title:
-        st.subheader(f"{T['product_num']}{idx + 1}: {st.session_state.get(f'name_{p_id}', '')}")
+        st.subheader(f"{T['product_num']} {idx + 1}: {display_title}")
     with col_del:
         if len(st.session_state.products_list) > 1:
             if st.button(f"{T['del_product']}", key=f"del_btn_{p_id}"):
@@ -440,10 +458,10 @@ for idx, p_id in enumerate(st.session_state.products_list):
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
     
     with b_col1:
-        batch_cost = st.number_input(T["cost_col"], value=1500, step=100, key=f"b_cost_{p_id}")
+        batch_cost = st.number_input(T["cost_col"], value=0 if idx > 0 else 1500, step=100, key=f"b_cost_{p_id}")
         apply_cost = st.button(f"{T['btn_apply']} {T['cost_col']}", key=f"btn_apply_cost_{p_id}")
     with b_col2:
-        batch_weight = st.number_input(T["weight_col"], value=float(weight_val if weight_val else 300.0), step=10.0, format="%.1f", key=f"b_weight_{p_id}")
+        batch_weight = st.number_input(T["weight_col"], value=float(weight_val if weight_val else 0.0), step=10.0, format="%.1f", key=f"b_weight_{p_id}")
         apply_weight = st.button(f"{T['btn_apply']} {T['weight_col']}", key=f"btn_apply_weight_{p_id}")
     with b_col3:
         batch_profit = st.number_input(T["profit_col"], value=30.0, step=1.0, format="%.1f", key=f"b_profit_{p_id}")
@@ -453,7 +471,6 @@ for idx, p_id in enumerate(st.session_state.products_list):
         apply_stock = st.button(f"{T['btn_apply']} {T['stock_col']}", key=f"btn_apply_stock_{p_id}")
 
     df_key = f"df_data_{p_id}"
-
     existing_df = st.session_state.get(df_key, pd.DataFrame())
 
     existing_map = {}
