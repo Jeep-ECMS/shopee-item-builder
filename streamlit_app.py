@@ -313,11 +313,9 @@ T = {
 
 st.title(T["title"])
 
-# --- CALLBACK บันทึกข้อมูล ---
 def on_field_change(p_id):
     save_product_to_db(p_id)
 
-# --- ฟังก์ชันเริ่มต้นข้อมูลสินค้าใหม่ (ไม่ทับข้อมูลที่มีอยู่) ---
 def init_product_defaults(p_id, idx):
     if f"cat_{p_id}" not in st.session_state: st.session_state[f"cat_{p_id}"] = "120039"
     if f"psku_{p_id}" not in st.session_state: st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}"
@@ -334,7 +332,6 @@ def init_product_defaults(p_id, idx):
     if f"v2n_{p_id}" not in st.session_state: st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
     if f"v2o_{p_id}" not in st.session_state: st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
 
-# --- โหลดข้อมูลจาก DB ครั้งแรก ---
 if "loaded_from_db" not in st.session_state:
     has_db_data = load_all_from_db()
     st.session_state.loaded_from_db = True
@@ -344,7 +341,7 @@ if "loaded_from_db" not in st.session_state:
         init_product_defaults(0, 0)
         save_product_to_db(0)
 
-# --- CONTROL PANEL หลัก ---
+# --- CONTROL PANEL ---
 realtime_rates = fetch_base_rates()
 st.subheader(T["calc_setting"])
 col_cur, col_rate = st.columns(2)
@@ -450,97 +447,103 @@ for idx, p_id in enumerate(st.session_state.products_list):
         apply_stock = st.button(f"{T['btn_apply']} {T['stock_col']}", key=f"btn_apply_stock_{p_id}")
 
     df_key = f"df_data_{p_id}"
-    opts_key = f"last_opts_{p_id}"
-    cost_key, weight_key, profit_key, price_key, stock_key = "cost_jpy", "weight_g", "profit_rate", "selling_price", "stock"
 
-    current_opts_str = f"{v1o_val}||{v2o_val}||{psku_val}"
-    
-    # ตรวจสอบว่าตารางนี้ต้องเริ่มสร้างใหม่หรือไม่ (สร้างเมื่อไม่มีข้อมูลเดิม หรือรายการตัวเลือก/Parent SKU เปลี่ยน)
-    needs_rebuild = (df_key not in st.session_state) or (st.session_state.get(opts_key) != current_opts_str)
+    # --- โครงสร้างการจัดการ VARIATIONS แบบรักษาค่า 100% ---
+    existing_df = st.session_state.get(df_key, pd.DataFrame())
 
-    if needs_rebuild:
-        existing_df = st.session_state.get(df_key, None)
-        existing_dict = {}
-        if existing_df is not None and not existing_df.empty:
-            for _, row_item in existing_df.iterrows():
-                existing_dict[(str(row_item.get("Opt1", "")), str(row_item.get("Opt2", "")))] = row_item
+    # สร้าง Dictionary ดึงค่าเดิมตาม Opt1 และ Opt2
+    existing_map = {}
+    if isinstance(existing_df, pd.DataFrame) and not existing_df.empty:
+        for _, r in existing_df.iterrows():
+            existing_map[(str(r.get("Opt1", "")), str(r.get("Opt2", "")))] = r.to_dict()
 
-        synced_rows = []
-        for opt1, opt2 in variations:
-            var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
-            sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
-            default_sku = f"{psku_val}{sku_suffix}"
-            
-            key_tuple = (opt1, opt2)
-            if key_tuple in existing_dict:
-                prev = existing_dict[key_tuple]
-                synced_rows.append({
-                    "Variation": var_title,
-                    "SKU": prev.get("SKU", default_sku),
-                    cost_key: int(prev.get(cost_key, batch_cost)),
-                    weight_key: float(prev.get(weight_key, batch_weight)),
-                    profit_key: float(prev.get(profit_key, batch_profit)),
-                    price_key: 0,
-                    stock_key: int(prev.get(stock_key, batch_stock)),
-                    "Opt1": opt1,
-                    "Opt2": opt2
-                })
-            else:
-                synced_rows.append({
-                    "Variation": var_title,
-                    "SKU": default_sku,
-                    cost_key: int(batch_cost),
-                    weight_key: float(batch_weight),
-                    profit_key: float(batch_profit),
-                    price_key: 0,
-                    stock_key: int(batch_stock),
-                    "Opt1": opt1,
-                    "Opt2": opt2
-                })
+    new_rows = []
+    for opt1, opt2 in variations:
+        key_tuple = (str(opt1), str(opt2))
+        var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
+        sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
+        default_sku = f"{psku_val}{sku_suffix}"
 
-        st.session_state[df_key] = pd.DataFrame(synced_rows)
-        st.session_state[opts_key] = current_opts_str
+        if key_tuple in existing_map:
+            # ใช้ค่าที่ผู้ใช้เคยแก้ไว้เดิม 100%
+            old_row = existing_map[key_tuple]
+            old_row["Variation"] = var_title
+            new_rows.append(old_row)
+        else:
+            # สร้างตัวเลือกใหม่เฉพาะรายการที่เพิ่งเพิ่มเข้ามา
+            new_rows.append({
+                "Variation": var_title,
+                "SKU": default_sku,
+                "cost_jpy": int(batch_cost),
+                "weight_g": float(batch_weight),
+                "profit_rate": float(batch_profit),
+                "selling_price": 0,
+                "stock": int(batch_stock),
+                "Opt1": str(opt1),
+                "Opt2": str(opt2)
+            })
 
-    current_df = st.session_state[df_key].copy()
+    current_df = pd.DataFrame(new_rows)
 
-    # อัปเดตเมื่อกดปุ่ม "นำไปใช้"
-    if apply_cost: current_df[cost_key] = int(batch_cost)
-    if apply_weight: current_df[weight_key] = float(batch_weight)
-    if apply_profit: current_df[profit_key] = float(batch_profit)
-    if apply_stock: current_df[stock_key] = int(batch_stock)
+    # อัปเดตเมื่อกดปุ่ม Apply และบันทึกทันที
+    if apply_cost:
+        current_df["cost_jpy"] = int(batch_cost)
+        st.session_state[df_key] = current_df
+        save_variations_to_db(p_id, current_df)
+        st.rerun()
+    if apply_weight:
+        current_df["weight_g"] = float(batch_weight)
+        st.session_state[df_key] = current_df
+        save_variations_to_db(p_id, current_df)
+        st.rerun()
+    if apply_profit:
+        current_df["profit_rate"] = float(batch_profit)
+        st.session_state[df_key] = current_df
+        save_variations_to_db(p_id, current_df)
+        st.rerun()
+    if apply_stock:
+        current_df["stock"] = int(batch_stock)
+        st.session_state[df_key] = current_df
+        save_variations_to_db(p_id, current_df)
+        st.rerun()
 
-    # คำนวณราคาขายใหม่เสมอ
-    if not current_df.empty:
-        current_df[price_key] = current_df.apply(
-            lambda row: calculate_net_price(
-                buying_price_jpy=row.get(cost_key, 0),
-                weight_g=row.get(weight_key, 0),
-                profit_rate_pct=row.get(profit_key, 0),
-                currency=currency,
-                rate_to_jpy=rate_jpy
-            ), axis=1
-        )
+    st.session_state[df_key] = current_df
+
+    # คำนวณราคาขายสำหรับการแสดงผล
+    df_display = current_df.copy()
+    df_display["selling_price"] = df_display.apply(
+        lambda row: calculate_net_price(
+            buying_price_jpy=row.get("cost_jpy", 0),
+            weight_g=row.get("weight_g", 0),
+            profit_rate_pct=row.get("profit_rate", 0),
+            currency=currency,
+            rate_to_jpy=rate_jpy
+        ), axis=1
+    )
 
     st.write(T["grid_title"])
     edited_df = st.data_editor(
-        current_df,
+        df_display,
         column_config={
             "Variation": st.column_config.Column(disabled=True),
             "SKU": st.column_config.TextColumn(T["sku_col"], disabled=False),
-            cost_key: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
-            weight_key: st.column_config.NumberColumn(T["weight_col"], min_value=0.0, format="%.1f g"),
-            profit_key: st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
-            price_key: st.column_config.NumberColumn(f"{T['price_col']} ({currency})", disabled=True, format="%d " + currency),
-            stock_key: st.column_config.NumberColumn(T["stock_col"], min_value=0, format="%d"),
+            "cost_jpy": st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
+            "weight_g": st.column_config.NumberColumn(T["weight_col"], min_value=0.0, format="%.1f g"),
+            "profit_rate": st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
+            "selling_price": st.column_config.NumberColumn(f"{T['price_col']} ({currency})", disabled=True, format="%d " + currency),
+            "stock": st.column_config.NumberColumn(T["stock_col"], min_value=0, format="%d"),
             "Opt1": None, "Opt2": None
         },
         hide_index=True,
         key=f"editor_{p_id}"
     )
 
-    # บันทึกสถานะการแก้ไขกลับเข้า Session State และ DB ทันที
-    st.session_state[df_key] = edited_df
-    save_variations_to_db(p_id, edited_df)
+    # เซฟค่าที่แก้ไขผ่าน Data Editor กลับเข้า Session State และ SQLite
+    for col in ["SKU", "cost_jpy", "weight_g", "profit_rate", "stock"]:
+        if col in edited_df.columns:
+            st.session_state[df_key][col] = edited_df[col]
+
+    save_variations_to_db(p_id, st.session_state[df_key])
 
     v1_imgs_list = [x.strip() for x in v1i_val.split(",") if x.strip()]
     updated_products_data.append({
@@ -548,8 +551,8 @@ for idx, p_id in enumerate(st.session_state.products_list):
         "brand": brand_val, "p_name": pname_val, "weight": weight_val if weight_val else 0,
         "p_desc": pdesc_val, "cover_img": cimg_val, "v1_name": v1n_val,
         "v1_opts_list": list_v1, "v1_imgs": v1_imgs_list, "v2_name": v2n_val,
-        "variations_table": edited_df, "cost_key": cost_key, "weight_key": weight_key,
-        "price_key": price_key, "stock_key": stock_key
+        "variations_table": st.session_state[df_key], "cost_key": "cost_jpy", "weight_key": "weight_g",
+        "price_key": "selling_price", "stock_key": "stock"
     })
 
 if prod_id_to_remove is not None:
@@ -613,6 +616,16 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
 
         for idx, row in df_vars.iterrows():
             current_row = start_row
+            
+            # คำนวณ Selling Price ล่าสุดลง Excel
+            calc_price = calculate_net_price(
+                buying_price_jpy=row.get("cost_jpy", 0),
+                weight_g=row.get("weight_g", 0),
+                profit_rate_pct=row.get("profit_rate", 0),
+                currency=currency,
+                rate_to_jpy=rate_jpy
+            )
+
             ws.cell(row=current_row, column=1, value=cat_id)
             ws.cell(row=current_row, column=2, value=p_name if idx == 0 else "")
             ws.cell(row=current_row, column=3, value=p_desc if idx == 0 else "")
@@ -626,7 +639,7 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
                 ws.cell(row=current_row, column=14, value=v2_name)
                 ws.cell(row=current_row, column=15, value=row["Opt2"])
                 
-            ws.cell(row=current_row, column=16, value=row[pr_k])
+            ws.cell(row=current_row, column=16, value=calc_price)
             ws.cell(row=current_row, column=17, value=row[st_k])
             ws.cell(row=current_row, column=18, value=row["SKU"])
             
