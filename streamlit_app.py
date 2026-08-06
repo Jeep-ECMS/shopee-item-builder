@@ -40,7 +40,7 @@ def fetch_base_rates():
     return rates_out
 
 
-# --- 1. ตาราง SLS TRANSPORTATION ---
+# --- 1. ตาราง SLS TRANSPORTATION & คำนวณราคาปลอดภัย ---
 SLS_RATES_THB = [
     (100, 93), (200, 105), (300, 129), (400, 153), (500, 177),
     (600, 200), (700, 230), (800, 250), (900, 270), (1000, 300),
@@ -83,9 +83,9 @@ def get_sls_shipping_fee_php(weight_g):
 
 def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, currency="THB", rate_to_jpy=None):
     try:
-        buying_price_jpy = float(buying_price_jpy)
-        weight_g = float(weight_g)
-        profit_rate_pct = float(profit_rate_pct)
+        buying_price_jpy = float(buying_price_jpy) if buying_price_jpy is not None else 0.0
+        weight_g = float(weight_g) if weight_g is not None else 0.0
+        profit_rate_pct = float(profit_rate_pct) if profit_rate_pct is not None else 0.0
     except (ValueError, TypeError):
         return 0
 
@@ -274,14 +274,14 @@ else:
 T = LANG_TEXTS[lang_code]
 st.title(T["title"])
 
-# --- 3. GLOBAL CONTROL PANEL (REAL-TIME EXCHANGE RATE: THB/PHP -> JPY) ---
+# --- 3. GLOBAL CONTROL PANEL (REAL-TIME EXCHANGE RATE) ---
 realtime_rates = fetch_base_rates()
 
 st.subheader(T["calc_setting"])
 col_cur, col_rate = st.columns(2)
 
 with col_cur:
-    currency = st.selectbox(T["currency_select"], ["THB", "PHP"])
+    currency = st.selectbox(T["currency_select"], ["THB", "PHP"], key="global_currency")
 
 with col_rate:
     current_realtime_rate = realtime_rates.get(currency, 4.73 if currency == "THB" else 2.65)
@@ -289,33 +289,16 @@ with col_rate:
         T["rate_label"].format(curr=currency), 
         value=current_realtime_rate, 
         format="%.4f",
-        help=T["rate_info"]
+        help=T["rate_info"],
+        key="global_rate"
     )
     st.caption(f"{T['rate_info']}: **1 {currency} = {rate_jpy} JPY**")
 
 st.markdown("---")
 
-if "products" not in st.session_state:
-    st.session_state.products = [
-        {
-            "id": 0,
-            "category_id": "120039",
-            "parent_sku": "361086-18",
-            "integration_no": "",
-            "brand": "No Brand",
-            "product_name": T["default_pname"],
-            "weight": 500.0,
-            "product_desc": T["default_pdesc"],
-            "cover_image": "https://example.com/cover.jpg, https://example.com/img1.jpg, https://example.com/img2.jpg",
-            "v1_name": T["default_v1_name"],
-            "v1_options": T["default_v1_opts"],
-            "v1_images": "https://example.com/wine.jpg, https://example.com/white.jpg",
-            "v2_name": T["default_v2_name"],
-            "v2_options": T["default_v2_opts"],
-        }
-    ]
-
-if "next_prod_id" not in st.session_state:
+# --- INITIALIZE SESSION STATE FOR PRODUCTS ---
+if "products_list" not in st.session_state:
+    st.session_state.products_list = [0]
     st.session_state.next_prod_id = 1
 
 col_btn1, col_btn2 = st.columns([1, 4])
@@ -323,66 +306,74 @@ with col_btn1:
     if st.button(T["add_product"]):
         new_id = st.session_state.next_prod_id
         st.session_state.next_prod_id += 1
-        st.session_state.products.append({
-            "id": new_id,
-            "category_id": "100000",
-            "parent_sku": f"ITEM-{new_id+1:03d}",
-            "integration_no": "",
-            "brand": "No Brand",
-            "product_name": f"{T['product_num']} {len(st.session_state.products)+1}",
-            "weight": 300.0,
-            "product_desc": "...",
-            "cover_image": "https://example.com/cover.jpg",
-            "v1_name": "Option",
-            "v1_options": "A, B",
-            "v1_images": "",
-            "v2_name": "",
-            "v2_options": "",
-        })
+        st.session_state.products_list.append(new_id)
         st.rerun()
 
 updated_products_data = []
-prod_index_to_remove = None
+prod_id_to_remove = None
 
-for idx, p in enumerate(st.session_state.products):
-    p_id = p.get("id", idx)
+for idx, p_id in enumerate(st.session_state.products_list):
     st.markdown("---")
     col_title, col_del = st.columns([8, 2])
+    
+    # กำหนดค่าเริ่มต้นของสินค้า หากยังไม่มีใน Session State
+    if f"name_{p_id}" not in st.session_state:
+        st.session_state[f"cat_{p_id}"] = "120039"
+        st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}"
+        st.session_state[f"integ_{p_id}"] = ""
+        st.session_state[f"brand_{p_id}"] = "No Brand"
+        st.session_state[f"name_{p_id}"] = T["default_pname"] if p_id == 0 else f"{T['product_num']}{idx+1}"
+        st.session_state[f"w_{p_id}"] = 300.0
+        st.session_state[f"desc_{p_id}"] = T["default_pdesc"]
+        st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg, https://example.com/img2.jpg"
+        st.session_state[f"v1n_{p_id}"] = T["default_v1_name"]
+        st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"]
+        st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg"
+        st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
+        st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
+
     with col_title:
-        st.subheader(f"{T['product_num']}{idx + 1}: {p.get('product_name', '')}")
+        st.subheader(f"{T['product_num']}{idx + 1}: {st.session_state.get(f'name_{p_id}', '')}")
     with col_del:
-        if len(st.session_state.products) > 1:
+        if len(st.session_state.products_list) > 1:
             if st.button(f"{T['del_product']}", key=f"del_btn_{p_id}"):
-                prod_index_to_remove = idx
+                prod_id_to_remove = p_id
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        p["category_id"] = st.text_input(T["cat_id"], value=p.get("category_id", ""), key=f"cat_{p_id}")
+        cat_id_val = st.text_input(T["cat_id"], key=f"cat_{p_id}")
         col_psku, col_integ = st.columns(2)
         with col_psku:
-            p["parent_sku"] = st.text_input(T["parent_sku"], value=p.get("parent_sku", ""), key=f"psku_{p_id}")
+            psku_val = st.text_input(T["parent_sku"], key=f"psku_{p_id}")
         with col_integ:
-            p["integration_no"] = st.text_input(T["integration_no"], value=p.get("integration_no", ""), key=f"integ_{p_id}")
-        p["brand"] = st.text_input(T["brand"], value=p.get("brand", ""), key=f"brand_{p_id}")
+            integ_val = st.text_input(T["integration_no"], key=f"integ_{p_id}")
+        brand_val = st.text_input(T["brand"], key=f"brand_{p_id}")
     with c2:
-        p["product_name"] = st.text_input(T["p_name"], value=p.get("product_name", ""), key=f"name_{p_id}")
-        p["weight"] = st.number_input(T["weight"], value=float(p.get("weight", 300.0)), step=10.0, format="%.1f", key=f"w_{p_id}")
+        pname_val = st.text_input(T["p_name"], key=f"name_{p_id}")
+        weight_val = st.number_input(T["weight"], step=10.0, format="%.1f", key=f"w_{p_id}")
     with c3:
-        p["product_desc"] = st.text_area(T["p_desc"], value=p.get("product_desc", ""), key=f"desc_{p_id}")
+        pdesc_val = st.text_area(T["p_desc"], key=f"desc_{p_id}")
 
-    p["cover_image"] = st.text_input(T["cover_img"], value=p.get("cover_image", ""), help=T["cover_img_help"], key=f"cimg_{p_id}")
+    cimg_val = st.text_input(T["cover_img"], help=T["cover_img_help"], key=f"cimg_{p_id}")
 
     cv1, cv2 = st.columns(2)
     with cv1:
-        p["v1_name"] = st.text_input(T["v1_name"], value=p.get("v1_name", ""), key=f"v1n_{p_id}")
-        p["v1_options"] = st.text_input(T["v1_opts"], value=p.get("v1_options", ""), key=f"v1o_{p_id}")
-        p["v1_images"] = st.text_input(T["v1_imgs"], value=p.get("v1_images", ""), help=T["v1_imgs_help"], key=f"v1i_{p_id}")
+        v1n_val = st.text_input(T["v1_name"], key=f"v1n_{p_id}")
+        v1o_val = st.text_input(T["v1_opts"], key=f"v1o_{p_id}")
+        v1i_val = st.text_input(T["v1_imgs"], help=T["v1_imgs_help"], key=f"v1i_{p_id}")
     with cv2:
-        p["v2_name"] = st.text_input(T["v2_name"], value=p.get("v2_name", ""), key=f"v2n_{p_id}")
-        p["v2_options"] = st.text_input(T["v2_opts"], value=p.get("v2_options", ""), key=f"v2o_{p_id}")
+        v2n_val = st.text_input(T["v2_name"], key=f"v2n_{p_id}")
+        v2o_val = st.text_input(T["v2_opts"], key=f"v2o_{p_id}")
 
-    list_v1 = [x.strip() for x in p["v1_options"].split(",") if x.strip()]
-    list_v2 = [x.strip() for x in p["v2_options"].split(",") if x.strip()] if p["v2_name"] else [""]
+    # ป้องกันการเกิดค่าว่างเปล่า (Empty Options)
+    list_v1 = [x.strip() for x in v1o_val.split(",") if x.strip()]
+    if not list_v1:
+        list_v1 = ["Standard"]
+
+    list_v2 = [x.strip() for x in v2o_val.split(",") if x.strip()] if v2n_val else [""]
+    if not list_v2:
+        list_v2 = [""]
+
     variations = list(itertools.product(list_v1, list_v2))
 
     st.write(T["batch_title"])
@@ -393,7 +384,7 @@ for idx, p in enumerate(st.session_state.products):
         apply_cost = st.button(f"{T['btn_apply']} {T['cost_col']}", key=f"btn_apply_cost_{p_id}")
         
     with b_col2:
-        batch_weight = st.number_input(T["weight_col"], value=float(p["weight"]), step=10.0, format="%.1f", key=f"b_weight_{p_id}")
+        batch_weight = st.number_input(T["weight_col"], value=float(weight_val if weight_val else 300.0), step=10.0, format="%.1f", key=f"b_weight_{p_id}")
         apply_weight = st.button(f"{T['btn_apply']} {T['weight_col']}", key=f"btn_apply_weight_{p_id}")
         
     with b_col3:
@@ -420,7 +411,7 @@ for idx, p in enumerate(st.session_state.products):
 
             grid_data.append({
                 "Variation": var_title,
-                "SKU": f"{p['parent_sku']}{sku_suffix}",
+                "SKU": f"{psku_val}{sku_suffix}",
                 cost_key: int(batch_cost),
                 weight_key: float(batch_weight),
                 profit_key: float(batch_profit),
@@ -435,19 +426,19 @@ for idx, p in enumerate(st.session_state.products):
         new_grid_data = []
         for opt1, opt2 in variations:
             var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
-            sku_default = f"{p['parent_sku']}" + (f"-{opt1}" if opt1 else "") + (f"-{opt2}" if opt2 else "")
+            sku_default = f"{psku_val}" + (f"-{opt1}" if opt1 else "") + (f"-{opt2}" if opt2 else "")
             
-            match = df_existing[df_existing["Variation"] == var_title]
+            match = df_existing[df_existing["Variation"] == var_title] if not df_existing.empty and "Variation" in df_existing.columns else pd.DataFrame()
             
             if not match.empty:
                 c_val = int(batch_cost) if apply_cost else match.iloc[0].get(cost_key, 1590)
-                w_val = float(batch_weight) if apply_weight else match.iloc[0].get(weight_key, float(p["weight"]))
+                w_val = float(batch_weight) if apply_weight else match.iloc[0].get(weight_key, float(weight_val if weight_val else 300.0))
                 p_val = float(batch_profit) if apply_profit else match.iloc[0].get(profit_key, 30.0)
                 s_val = int(batch_stock) if apply_stock else match.iloc[0].get(stock_key, 2)
                 sku_val = match.iloc[0].get("SKU", sku_default)
             else:
                 c_val = int(batch_cost) if apply_cost else 1590
-                w_val = float(batch_weight) if apply_weight else float(p["weight"])
+                w_val = float(batch_weight) if apply_weight else float(weight_val if weight_val else 300.0)
                 p_val = float(batch_profit) if apply_profit else 30.0
                 s_val = int(batch_stock) if apply_stock else 2
                 sku_val = sku_default
@@ -467,15 +458,19 @@ for idx, p in enumerate(st.session_state.products):
 
     df_var = st.session_state[df_state_key]
 
-    df_var[price_key] = df_var.apply(
-        lambda row: calculate_net_price(
-            buying_price_jpy=row[cost_key],
-            weight_g=row[weight_key],
-            profit_rate_pct=row[profit_key],
-            currency=currency,
-            rate_to_jpy=rate_jpy
-        ), axis=1
-    )
+    # --- 🛡️ ตรวจสอบความปลอดภัยแบบร้อยเปอร์เซ็นต์ ไม่ให้เกิด Error บน DataFrame ---
+    if not df_var.empty:
+        df_var[price_key] = df_var.apply(
+            lambda row: calculate_net_price(
+                buying_price_jpy=row.get(cost_key, 0),
+                weight_g=row.get(weight_key, 0),
+                profit_rate_pct=row.get(profit_key, 0),
+                currency=currency,
+                rate_to_jpy=rate_jpy
+            ), axis=1
+        )
+    else:
+        df_var[price_key] = []
 
     st.write(T["grid_title"])
     edited_df = st.data_editor(
@@ -484,7 +479,7 @@ for idx, p in enumerate(st.session_state.products):
             "Variation": st.column_config.Column(disabled=True),
             "SKU": st.column_config.TextColumn(T["sku_col"], disabled=False),
             cost_key: st.column_config.NumberColumn(T["cost_col"], min_value=0, format="%d ¥"),
-            weight_key: st.column_config.NumberColumn(T["weight_col"], min_value=1.0, format="%.1f g"),
+            weight_key: st.column_config.NumberColumn(T["weight_col"], min_value=0.0, format="%.1f g"),
             profit_key: st.column_config.NumberColumn(T["profit_col"], min_value=0.0, max_value=99.0, format="%.1f %%"),
             price_key: st.column_config.NumberColumn(f"{T['price_col']} ({currency})", disabled=True, format="%d " + currency),
             stock_key: st.column_config.NumberColumn(T["stock_col"], min_value=0, format="%d"),
@@ -497,20 +492,20 @@ for idx, p in enumerate(st.session_state.products):
 
     st.session_state[df_state_key] = edited_df
 
-    v1_imgs_list = [x.strip() for x in p["v1_images"].split(",") if x.strip()]
+    v1_imgs_list = [x.strip() for x in v1i_val.split(",") if x.strip()]
     updated_products_data.append({
-        "cat_id": p["category_id"],
-        "p_sku": p["parent_sku"],
-        "integration_no": p["integration_no"],
-        "brand": p["brand"],
-        "p_name": p["product_name"],
-        "weight": p["weight"],
-        "p_desc": p["product_desc"],
-        "cover_img": p["cover_image"],
-        "v1_name": p["v1_name"],
+        "cat_id": cat_id_val,
+        "p_sku": psku_val,
+        "integration_no": integ_val,
+        "brand": brand_val,
+        "p_name": pname_val,
+        "weight": weight_val if weight_val else 0,
+        "p_desc": pdesc_val,
+        "cover_img": cimg_val,
+        "v1_name": v1n_val,
         "v1_opts_list": list_v1,
         "v1_imgs": v1_imgs_list,
-        "v2_name": p["v2_name"],
+        "v2_name": v2n_val,
         "variations_table": edited_df,
         "cost_key": cost_key,
         "weight_key": weight_key,
@@ -518,11 +513,10 @@ for idx, p in enumerate(st.session_state.products):
         "stock_key": stock_key
     })
 
-if prod_index_to_remove is not None:
-    removed_p = st.session_state.products.pop(prod_index_to_remove)
-    rem_id = removed_p.get("id", prod_index_to_remove)
-    if f"df_data_{rem_id}" in st.session_state:
-        del st.session_state[f"df_data_{rem_id}"]
+if prod_id_to_remove is not None:
+    st.session_state.products_list.remove(prod_id_to_remove)
+    if f"df_data_{prod_id_to_remove}" in st.session_state:
+        del st.session_state[f"df_data_{prod_id_to_remove}"]
     st.rerun()
 
 # --- 4. EXPORT EXCEL ---
@@ -644,10 +638,10 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
             ws.cell(row=current_row, column=18, value=row["SKU"])
             
             if idx == 0:
-                # 📌 แยก URL รูปภาพด้วยเครื่องหมาย (,) และกระจายลง Column U ถึง AC (Column 21 ถึง 29) อัตโนมัติ
+                # แยก URL รูปภาพด้วยเครื่องหมาย (,) และกระจายลง Column U ถึง AC (Column 21 ถึง 29) อัตโนมัติ
                 cover_imgs_list = [x.strip() for x in cover_img.split(",") if x.strip()]
                 for img_i, img_url in enumerate(cover_imgs_list):
-                    if img_i < 9:  # U ถึง AC มีทั้งหมด 9 ช่อง (Column 21-29)
+                    if img_i < 9:
                         ws.cell(row=current_row, column=21 + img_i, value=img_url)
 
                 ws.cell(row=current_row, column=30, value=row[w_k] / 1000.0)
