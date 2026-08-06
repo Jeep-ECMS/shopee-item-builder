@@ -316,21 +316,24 @@ st.title(T["title"])
 def on_field_change(p_id):
     save_product_to_db(p_id)
 
+# --- ปรับปรุงจุดนี้: แยก Default ชิ้นแรก (Demo) กับ ชิ้นถัดไป (Blank) ---
 def init_product_defaults(p_id, idx):
-    if f"cat_{p_id}" not in st.session_state: st.session_state[f"cat_{p_id}"] = "120039"
-    if f"psku_{p_id}" not in st.session_state: st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}"
+    is_demo = (idx == 0)
+    
+    if f"cat_{p_id}" not in st.session_state: st.session_state[f"cat_{p_id}"] = "120039" if is_demo else ""
+    if f"psku_{p_id}" not in st.session_state: st.session_state[f"psku_{p_id}"] = f"361086-{p_id+18}" if is_demo else ""
     if f"integ_{p_id}" not in st.session_state: st.session_state[f"integ_{p_id}"] = ""
-    if f"brand_{p_id}" not in st.session_state: st.session_state[f"brand_{p_id}"] = "No Brand"
+    if f"brand_{p_id}" not in st.session_state: st.session_state[f"brand_{p_id}"] = "No Brand" if is_demo else ""
     if f"name_{p_id}" not in st.session_state:
-        st.session_state[f"name_{p_id}"] = T["default_pname"] if idx == 0 else f"{T['product_num']}{idx+1}"
+        st.session_state[f"name_{p_id}"] = T["default_pname"] if is_demo else f"สินค้าชิ้นที่ {idx+1}"
     if f"w_{p_id}" not in st.session_state: st.session_state[f"w_{p_id}"] = 300.0
-    if f"desc_{p_id}" not in st.session_state: st.session_state[f"desc_{p_id}"] = T["default_pdesc"]
-    if f"cimg_{p_id}" not in st.session_state: st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg"
-    if f"v1n_{p_id}" not in st.session_state: st.session_state[f"v1n_{p_id}"] = T["default_v1_name"]
-    if f"v1o_{p_id}" not in st.session_state: st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"]
-    if f"v1i_{p_id}" not in st.session_state: st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg"
-    if f"v2n_{p_id}" not in st.session_state: st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
-    if f"v2o_{p_id}" not in st.session_state: st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
+    if f"desc_{p_id}" not in st.session_state: st.session_state[f"desc_{p_id}"] = T["default_pdesc"] if is_demo else ""
+    if f"cimg_{p_id}" not in st.session_state: st.session_state[f"cimg_{p_id}"] = "https://example.com/cover.jpg, https://example.com/img1.jpg" if is_demo else ""
+    if f"v1n_{p_id}" not in st.session_state: st.session_state[f"v1n_{p_id}"] = T["default_v1_name"] if is_demo else ""
+    if f"v1o_{p_id}" not in st.session_state: st.session_state[f"v1o_{p_id}"] = T["default_v1_opts"] if is_demo else ""
+    if f"v1i_{p_id}" not in st.session_state: st.session_state[f"v1i_{p_id}"] = "https://example.com/wine.jpg, https://example.com/white.jpg" if is_demo else ""
+    if f"v2n_{p_id}" not in st.session_state: st.session_state[f"v2n_{p_id}"] = T["default_v2_name"] if is_demo else ""
+    if f"v2o_{p_id}" not in st.session_state: st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"] if is_demo else ""
 
 if "loaded_from_db" not in st.session_state:
     has_db_data = load_all_from_db()
@@ -424,11 +427,14 @@ for idx, p_id in enumerate(st.session_state.products_list):
         v2n_val = st.text_input(T["v2_name"], key=f"v2n_{p_id}", on_change=on_field_change, args=(p_id,))
         v2o_val = st.text_input(T["v2_opts"], key=f"v2o_{p_id}", on_change=on_field_change, args=(p_id,))
 
-    list_v1 = [x.strip() for x in v1o_val.split(",") if x.strip()] or ["Standard"]
+    list_v1 = [x.strip() for x in v1o_val.split(",") if x.strip()] or (["Standard"] if v1n_val else [])
     list_v2 = [x.strip() for x in v2o_val.split(",") if x.strip()] if v2n_val else [""]
     if not list_v2: list_v2 = [""]
 
-    variations = list(itertools.product(list_v1, list_v2))
+    if list_v1:
+        variations = list(itertools.product(list_v1, list_v2))
+    else:
+        variations = []
 
     st.write(T["batch_title"])
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
@@ -448,10 +454,8 @@ for idx, p_id in enumerate(st.session_state.products_list):
 
     df_key = f"df_data_{p_id}"
 
-    # --- โครงสร้างการจัดการ VARIATIONS แบบรักษาค่า 100% ---
     existing_df = st.session_state.get(df_key, pd.DataFrame())
 
-    # สร้าง Dictionary ดึงค่าเดิมตาม Opt1 และ Opt2
     existing_map = {}
     if isinstance(existing_df, pd.DataFrame) and not existing_df.empty:
         for _, r in existing_df.iterrows():
@@ -462,15 +466,13 @@ for idx, p_id in enumerate(st.session_state.products_list):
         key_tuple = (str(opt1), str(opt2))
         var_title = f"{opt1}" + (f" / {opt2}" if opt2 else "")
         sku_suffix = f"-{opt1}" + (f"-{opt2}" if opt2 else "")
-        default_sku = f"{psku_val}{sku_suffix}"
+        default_sku = f"{psku_val}{sku_suffix}" if psku_val else f"SKU{sku_suffix}"
 
         if key_tuple in existing_map:
-            # ใช้ค่าที่ผู้ใช้เคยแก้ไว้เดิม 100%
             old_row = existing_map[key_tuple]
             old_row["Variation"] = var_title
             new_rows.append(old_row)
         else:
-            # สร้างตัวเลือกใหม่เฉพาะรายการที่เพิ่งเพิ่มเข้ามา
             new_rows.append({
                 "Variation": var_title,
                 "SKU": default_sku,
@@ -485,7 +487,6 @@ for idx, p_id in enumerate(st.session_state.products_list):
 
     current_df = pd.DataFrame(new_rows)
 
-    # อัปเดตเมื่อกดปุ่ม Apply และบันทึกทันที
     if apply_cost:
         current_df["cost_jpy"] = int(batch_cost)
         st.session_state[df_key] = current_df
@@ -509,17 +510,17 @@ for idx, p_id in enumerate(st.session_state.products_list):
 
     st.session_state[df_key] = current_df
 
-    # คำนวณราคาขายสำหรับการแสดงผล
     df_display = current_df.copy()
-    df_display["selling_price"] = df_display.apply(
-        lambda row: calculate_net_price(
-            buying_price_jpy=row.get("cost_jpy", 0),
-            weight_g=row.get("weight_g", 0),
-            profit_rate_pct=row.get("profit_rate", 0),
-            currency=currency,
-            rate_to_jpy=rate_jpy
-        ), axis=1
-    )
+    if not df_display.empty:
+        df_display["selling_price"] = df_display.apply(
+            lambda row: calculate_net_price(
+                buying_price_jpy=row.get("cost_jpy", 0),
+                weight_g=row.get("weight_g", 0),
+                profit_rate_pct=row.get("profit_rate", 0),
+                currency=currency,
+                rate_to_jpy=rate_jpy
+            ), axis=1
+        )
 
     st.write(T["grid_title"])
     edited_df = st.data_editor(
@@ -538,7 +539,6 @@ for idx, p_id in enumerate(st.session_state.products_list):
         key=f"editor_{p_id}"
     )
 
-    # เซฟค่าที่แก้ไขผ่าน Data Editor กลับเข้า Session State และ SQLite
     for col in ["SKU", "cost_jpy", "weight_g", "profit_rate", "stock"]:
         if col in edited_df.columns:
             st.session_state[df_key][col] = edited_df[col]
@@ -617,7 +617,6 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
         for idx, row in df_vars.iterrows():
             current_row = start_row
             
-            # คำนวณ Selling Price ล่าสุดลง Excel
             calc_price = calculate_net_price(
                 buying_price_jpy=row.get("cost_jpy", 0),
                 weight_g=row.get("weight_g", 0),
