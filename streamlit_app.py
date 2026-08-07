@@ -10,7 +10,107 @@ import sqlite3
 
 st.set_page_config(page_title="Shopee Auto Price & Mass Upload Builder", layout="wide")
 
-# --- ฐานข้อมูล SQLITE สำหรับ AUTO-SAVE ---
+# --- พจนานุกรมรองรับ 2 ภาษา (TH / EN) ---
+TEXTS = {
+    "TH": {
+        "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ (มี Auto-save 💾)",
+        "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Real-time Exchange Rate)",
+        "currency_select": "เลือกตลาดเป้าหมาย",
+        "rate_label": "อัตราแลกเปลี่ยน Real-time (1 {curr} -> JPY)",
+        "rate_info": "💡 ดึงข้อมูลอัตราแลกเปลี่ยน Real-time ล่าสุดอัตโนมัติ",
+        "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
+        "clear_all": "🗑️ ล้างข้อมูลสินค้าทั้งหมด",
+        "del_product": "🗑️ ลบสินค้านี้",
+        "product_num": "🛒 สินค้าชิ้นที่",
+        "cat_id": "Category ID / รหัสหมวดหมู่",
+        "parent_sku": "Parent SKU / รหัสอ้างอิงหลัก",
+        "integration_no": "Variation Integration No.",
+        "brand": "แบรนด์ (Brand)",
+        "p_name": "ชื่อสินค้า",
+        "weight": "น้ำหนักสินค้าเริ่มต้น (g)",
+        "p_desc": "รายละเอียดสินค้า",
+        "cover_img": "URL รูปภาพปกหลัก & รูปสินค้า (คั่นด้วย ,)",
+        "cover_img_help": "ใส่ URL คั่นด้วยเครื่องหมายจุลภาค รูปแรก = Cover Image",
+        "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
+        "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
+        "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
+        "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1",
+        "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
+        "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
+        "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
+        "btn_apply": "⚡ นำไปใช้",
+        "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
+        "cost_col": "Buying Price (JPY)",
+        "weight_col": "Weight (g)",
+        "profit_col": "Profit Rate (%)",
+        "price_col": "Selling Price",
+        "stock_col": "Stock (ชิ้น)",
+        "sku_col": "SKU (แก้ไขได้)",
+        "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
+        "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
+        "btn_download": "📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
+        "default_pname": "รองเท้าสปอร์ตผ้าใบคุณภาพสูง",
+        "default_pdesc": "รองเท้าสปอร์ต นุ่ม สวมใส่สบาย",
+        "default_v1_name": "สี",
+        "default_v1_opts": "WINE, WHITE",
+        "default_v2_name": "ไซส์",
+        "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
+        "lang_select": "🌐 ภาษา / Language"
+    },
+    "EN": {
+        "title": "📦 Shopee Mass Upload Builder & Auto Price Calculator (with Auto-save 💾)",
+        "calc_setting": "⚙️ Price Calculation Settings (Target Market & Real-time Exchange Rate)",
+        "currency_select": "Select Target Market",
+        "rate_label": "Real-time Exchange Rate (1 {curr} -> JPY)",
+        "rate_info": "💡 Auto-fetching latest real-time exchange rates",
+        "add_product": "➕ Add New Product",
+        "clear_all": "🗑️ Clear All Products",
+        "del_product": "🗑️ Delete Product",
+        "product_num": "🛒 Product #",
+        "cat_id": "Category ID",
+        "parent_sku": "Parent SKU",
+        "integration_no": "Variation Integration No.",
+        "brand": "Brand",
+        "p_name": "Product Name",
+        "weight": "Default Product Weight (g)",
+        "p_desc": "Product Description",
+        "cover_img": "Cover Image & Product URLs (comma separated)",
+        "cover_img_help": "Separate URLs with commas. First image = Cover Image",
+        "v1_name": "Variation 1 Name (e.g. Color)",
+        "v1_opts": "Variation 1 Options (comma separated)",
+        "v1_imgs": "Variation 1 Image URLs (comma separated)",
+        "v1_imgs_help": "Specify image URLs matching Variation 1 order",
+        "v2_name": "Variation 2 Name (e.g. Size) [Optional]",
+        "v2_opts": "Variation 2 Options (comma separated)",
+        "batch_title": "⚡ Quick Batch Apply (Apply values to all Variations):",
+        "btn_apply": "⚡ Apply",
+        "grid_title": "💰 Pricing, Weight (g), Profit Rate (%), Stock, and Selling Price Table:",
+        "cost_col": "Buying Price (JPY)",
+        "weight_col": "Weight (g)",
+        "profit_col": "Profit Rate (%)",
+        "price_col": "Selling Price",
+        "stock_col": "Stock (pcs)",
+        "sku_col": "SKU (Editable)",
+        "btn_generate": "🚀 Generate Combined Excel File for Shopee",
+        "success_msg": "✅ Generated successfully! Total products: {count}",
+        "btn_download": "📥 Download Shopee Mass Upload Excel",
+        "default_pname": "High Quality Sneakers",
+        "default_pdesc": "Comfortable sports shoes",
+        "default_v1_name": "Color",
+        "default_v1_opts": "WINE, WHITE",
+        "default_v2_name": "Size",
+        "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
+        "lang_select": "🌐 Language / ภาษา"
+    }
+}
+
+# --- SIDEBAR LANGUAGE SELECTION ---
+lang_choice = st.sidebar.selectbox("🌐 Language / ภาษา", ["TH", "EN"], key="app_language")
+T = TEXTS[lang_choice]
+
+st.title(T["title"])
+
+# --- DATABASE SETUP ---
 DB_FILE = "shopee_products.db"
 
 def init_db():
@@ -18,33 +118,15 @@ def init_db():
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS products (
-            p_id INTEGER PRIMARY KEY,
-            cat_id TEXT,
-            psku TEXT,
-            integ TEXT,
-            brand TEXT,
-            name TEXT,
-            weight REAL,
-            desc TEXT,
-            cimg TEXT,
-            v1n TEXT,
-            v1o TEXT,
-            v1i TEXT,
-            v2n TEXT,
-            v2o TEXT
+            p_id INTEGER PRIMARY KEY, cat_id TEXT, psku TEXT, integ TEXT,
+            brand TEXT, name TEXT, weight REAL, desc TEXT, cimg TEXT,
+            v1n TEXT, v1o TEXT, v1i TEXT, v2n TEXT, v2o TEXT
         )
     ''')
     c.execute('''
         CREATE TABLE IF NOT EXISTS variations (
-            p_id INTEGER,
-            variation_title TEXT,
-            sku TEXT,
-            cost_jpy INTEGER,
-            weight_g REAL,
-            profit_rate REAL,
-            stock INTEGER,
-            opt1 TEXT,
-            opt2 TEXT,
+            p_id INTEGER, variation_title TEXT, sku TEXT, cost_jpy INTEGER,
+            weight_g REAL, profit_rate REAL, stock INTEGER, opt1 TEXT, opt2 TEXT,
             PRIMARY KEY (p_id, variation_title)
         )
     ''')
@@ -59,27 +141,19 @@ def save_product_to_db(p_id):
         (p_id, cat_id, psku, integ, brand, name, weight, desc, cimg, v1n, v1o, v1i, v2n, v2o)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        p_id, 
-        st.session_state.get(f"cat_{p_id}", ""),
-        st.session_state.get(f"psku_{p_id}", ""),
-        st.session_state.get(f"integ_{p_id}", ""),
-        st.session_state.get(f"brand_{p_id}", ""),
-        st.session_state.get(f"name_{p_id}", ""),
-        float(st.session_state.get(f"w_{p_id}", 0.0)),
-        st.session_state.get(f"desc_{p_id}", ""),
-        st.session_state.get(f"cimg_{p_id}", ""),
-        st.session_state.get(f"v1n_{p_id}", ""),
-        st.session_state.get(f"v1o_{p_id}", ""),
-        st.session_state.get(f"v1i_{p_id}", ""),
-        st.session_state.get(f"v2n_{p_id}", ""),
+        p_id, st.session_state.get(f"cat_{p_id}", ""), st.session_state.get(f"psku_{p_id}", ""),
+        st.session_state.get(f"integ_{p_id}", ""), st.session_state.get(f"brand_{p_id}", ""),
+        st.session_state.get(f"name_{p_id}", ""), float(st.session_state.get(f"w_{p_id}", 0.0)),
+        st.session_state.get(f"desc_{p_id}", ""), st.session_state.get(f"cimg_{p_id}", ""),
+        st.session_state.get(f"v1n_{p_id}", ""), st.session_state.get(f"v1o_{p_id}", ""),
+        st.session_state.get(f"v1i_{p_id}", ""), st.session_state.get(f"v2n_{p_id}", ""),
         st.session_state.get(f"v2o_{p_id}", "")
     ))
     conn.commit()
     conn.close()
 
 def save_variations_to_db(p_id, df_vars):
-    if df_vars is None:
-        return
+    if df_vars is None: return
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('DELETE FROM variations WHERE p_id = ?', (p_id,))
@@ -102,19 +176,16 @@ def load_all_from_db():
     c = conn.cursor()
     c.execute('SELECT * FROM products ORDER BY p_id ASC')
     prods = c.fetchall()
-    
     if not prods:
         conn.close()
         return False
 
     st.session_state.products_list = []
     max_id = -1
-
     for row in prods:
         p_id = row[0]
         st.session_state.products_list.append(p_id)
-        if p_id > max_id:
-            max_id = p_id
+        if p_id > max_id: max_id = p_id
             
         st.session_state[f"cat_{p_id}"] = row[1]
         st.session_state[f"psku_{p_id}"] = row[2]
@@ -164,7 +235,7 @@ def clear_entire_db():
 
 init_db()
 
-# --- API ดึงอัตราแลกเปลี่ยน REALTIME ---
+# --- EXCHANGE RATES API ---
 @st.cache_data(ttl=3600)
 def fetch_base_rates():
     default_rates = {"THB": 4.73, "PHP": 2.65}
@@ -266,59 +337,10 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
 
     return 0
 
-# --- ข้อความภาษาไทย ---
-T = {
-    "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ (มี Auto-save 💾)",
-    "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Real-time Exchange Rate)",
-    "currency_select": "เลือกตลาดเป้าหมาย",
-    "rate_label": "อัตราแลกเปลี่ยน Real-time (1 {curr} -> JPY)",
-    "rate_info": "💡 ดึงข้อมูลอัตราแลกเปลี่ยน Real-time ล่าสุดอัตโนมัติ",
-    "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
-    "clear_all": "🗑️ ล้างข้อมูลสินค้าทั้งหมด",
-    "del_product": "🗑️ ลบสินค้านี้",
-    "product_num": "🛒 สินค้าชิ้นที่",
-    "cat_id": "Category ID / รหัสหมวดหมู่",
-    "parent_sku": "Parent SKU / รหัสอ้างอิงหลัก",
-    "integration_no": "Variation Integration No.",
-    "brand": "แบรนด์ (Brand)",
-    "p_name": "ชื่อสินค้า",
-    "weight": "น้ำหนักสินค้าเริ่มต้น (g)",
-    "p_desc": "รายละเอียดสินค้า",
-    "cover_img": "URL รูปภาพปกหลัก & รูปสินค้า (คั่นด้วย ,)",
-    "cover_img_help": "ใส่ URL คั่นด้วยเครื่องหมายจุลภาค รูปแรก = Cover Image",
-    "v1_name": "ชื่อตัวเลือกที่ 1 (เช่น สี / รุ่น)",
-    "v1_opts": "รายการตัวเลือกที่ 1 (คั่นด้วย ,)",
-    "v1_imgs": "URL รูปภาพตัวเลือกที่ 1 (คั่นด้วย ,)",
-    "v1_imgs_help": "ระบุ URL รูปตามลำดับตัวเลือกที่ 1",
-    "v2_name": "ชื่อตัวเลือกที่ 2 (เช่น ไซส์) [เว้นว่างได้]",
-    "v2_opts": "รายการตัวเลือกที่ 2 (คั่นด้วย ,)",
-    "batch_title": "⚡ ตั้งค่าด่วน (แยกปรับแต่ละค่าไปยังทุก Variation):",
-    "btn_apply": "⚡ นำไปใช้",
-    "grid_title": "💰 ตารางกำหนดราคาซื้อ (JPY), น้ำหนัก (g), Profit Rate (%), สต๊อก และราคาขาย:",
-    "cost_col": "Buying Price (JPY)",
-    "weight_col": "Weight (g)",
-    "profit_col": "Profit Rate (%)",
-    "price_col": "Selling Price",
-    "stock_col": "Stock (ชิ้น)",
-    "sku_col": "SKU (แก้ไขได้)",
-    "btn_generate": "🚀 สร้างไฟล์ Excel รวมทุกสินค้าสำหรับ Shopee",
-    "success_msg": "✅ สร้างไฟล์สำเร็จ! รวมสินค้าทั้งหมด {count} รายการ",
-    "btn_download": "📥 ดาวน์โหลดไฟล์ Excel พร้อมอัปโหลด Shopee",
-    "default_pname": "รองเท้าสปอร์ตผ้าใบคุณภาพสูง",
-    "default_pdesc": "รองเท้าสปอร์ต นุ่ม สวมใส่สบาย",
-    "default_v1_name": "สี",
-    "default_v1_opts": "WINE, WHITE",
-    "default_v2_name": "ไซส์",
-    "default_v2_opts": "23.0cm., 24.0cm., 25.0cm., 26.0cm.",
-}
-
-st.title(T["title"])
-
 def on_field_change(p_id):
     save_product_to_db(p_id)
 
 def create_blank_product(p_id):
-    """สร้าง State ค่าว่างสำหรับสินค้าใหม่"""
     st.session_state[f"cat_{p_id}"] = ""
     st.session_state[f"psku_{p_id}"] = ""
     st.session_state[f"integ_{p_id}"] = ""
@@ -335,7 +357,6 @@ def create_blank_product(p_id):
     st.session_state[f"df_data_{p_id}"] = pd.DataFrame()
 
 def create_demo_product(p_id):
-    """สร้าง Demo Default เฉพาะสินค้าชิ้นแรกกรณีเริ่มใหม่"""
     st.session_state[f"cat_{p_id}"] = "120039"
     st.session_state[f"psku_{p_id}"] = "361086-18"
     st.session_state[f"integ_{p_id}"] = ""
@@ -394,7 +415,7 @@ with col_btn2:
     if st.button(T["clear_all"], type="secondary"):
         clear_entire_db()
         for k in list(st.session_state.keys()):
-            if k not in ["global_currency", "global_rate"]:
+            if k not in ["global_currency", "global_rate", "app_language"]:
                 del st.session_state[k]
         st.session_state.products_list = [0]
         st.session_state.next_prod_id = 1
@@ -410,7 +431,7 @@ for idx, p_id in enumerate(st.session_state.products_list):
     col_title, col_del = st.columns([8, 2])
     
     title_text = st.session_state.get(f'name_{p_id}', '')
-    display_title = title_text if title_text else f"สินค้าชิ้นที่ {idx + 1}"
+    display_title = title_text if title_text else f"{T['product_num']} {idx + 1}"
 
     with col_title:
         st.subheader(f"{T['product_num']} {idx + 1}: {display_title}")
@@ -447,10 +468,7 @@ for idx, p_id in enumerate(st.session_state.products_list):
     list_v2 = [x.strip() for x in v2o_val.split(",") if x.strip()] if v2n_val else [""]
     if not list_v2: list_v2 = [""]
 
-    if list_v1:
-        variations = list(itertools.product(list_v1, list_v2))
-    else:
-        variations = []
+    variations = list(itertools.product(list_v1, list_v2)) if list_v1 else []
 
     st.write(T["batch_title"])
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
@@ -490,20 +508,13 @@ for idx, p_id in enumerate(st.session_state.products_list):
                 new_rows.append(old_row)
             else:
                 new_rows.append({
-                    "Variation": var_title,
-                    "SKU": default_sku,
-                    "cost_jpy": int(batch_cost),
-                    "weight_g": float(batch_weight),
-                    "profit_rate": float(batch_profit),
-                    "selling_price": 0,
-                    "stock": int(batch_stock),
-                    "Opt1": str(opt1),
-                    "Opt2": str(opt2)
+                    "Variation": var_title, "SKU": default_sku,
+                    "cost_jpy": int(batch_cost), "weight_g": float(batch_weight),
+                    "profit_rate": float(batch_profit), "selling_price": 0,
+                    "stock": int(batch_stock), "Opt1": str(opt1), "Opt2": str(opt2)
                 })
-
         current_df = pd.DataFrame(new_rows)
     else:
-        # หากยังไม่ได้พิมพ์ Option ให้คงค่าเดิมไว้ไม่สั่งลบตารางทิ้ง
         current_df = existing_df if isinstance(existing_df, pd.DataFrame) else pd.DataFrame()
 
     if not current_df.empty:
