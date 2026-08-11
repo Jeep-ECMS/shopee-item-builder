@@ -6,20 +6,22 @@ import itertools
 import pandas as pd
 import urllib.request
 import json
-import sqlite3
+import psycopg2
+import uuid
 
 st.set_page_config(page_title="Shopee Auto Price & Mass Upload Builder", layout="wide")
 
 # --- พจนานุกรมรองรับ 2 ภาษา (TH / EN) ---
 TEXTS = {
     "TH": {
-        "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ (มี Auto-save 💾)",
+        "title": "📦 เครื่องมือสร้างไฟล์ Mass Upload Shopee & คำนวณราคาขายอัตโนมัติ (Supabase ☁️)",
+        "user_select": "👤 เลือกบัญชีผู้ใช้งาน",
         "calc_setting": "⚙️ ตั้งค่าการคำนวณราคา (Target Market & Real-time Exchange Rate)",
         "currency_select": "เลือกตลาดเป้าหมาย",
         "rate_label": "อัตราแลกเปลี่ยน Real-time (1 {curr} -> JPY)",
         "rate_info": "💡 ดึงข้อมูลอัตราแลกเปลี่ยน Real-time ล่าสุดอัตโนมัติ",
         "add_product": "➕ เพิ่มสินค้าชิ้นใหม่",
-        "clear_all": "🗑️ ล้างข้อมูลสินค้าทั้งหมด",
+        "clear_all": "🗑️ ล้างข้อมูลสินค้าทั้งหมดของคุณ",
         "del_product": "🗑️ ลบสินค้านี้",
         "product_num": "🛒 สินค้าชิ้นที่",
         "cat_id": "Category ID / รหัสหมวดหมู่",
@@ -58,13 +60,14 @@ TEXTS = {
         "lang_select": "🌐 ภาษา / Language"
     },
     "EN": {
-        "title": "📦 Shopee Mass Upload Builder & Auto Price Calculator (with Auto-save 💾)",
+        "title": "📦 Shopee Mass Upload Builder & Auto Price Calculator (Supabase ☁️)",
+        "user_select": "👤 Select User Account",
         "calc_setting": "⚙️ Price Calculation Settings (Target Market & Real-time Exchange Rate)",
         "currency_select": "Select Target Market",
         "rate_label": "Real-time Exchange Rate (1 {curr} -> JPY)",
         "rate_info": "💡 Auto-fetching latest real-time exchange rates",
         "add_product": "➕ Add New Product",
-        "clear_all": "🗑️ Clear All Products",
+        "clear_all": "🗑️ Clear All Your Products",
         "del_product": "🗑️ Delete Product",
         "product_num": "🛒 Product #",
         "cat_id": "Category ID",
@@ -104,44 +107,50 @@ TEXTS = {
     }
 }
 
-# --- SIDEBAR LANGUAGE SELECTION ---
+# --- SIDEBAR CONTROL ---
 lang_choice = st.sidebar.selectbox("🌐 Language / ภาษา", ["TH", "EN"], key="app_language")
 T = TEXTS[lang_choice]
 
+# เลือกสลับผู้ใช้งาน ( User 1 / User 2 ) เพื่อแยกพื้นที่เก็บข้อมูล
+selected_user = st.sidebar.selectbox(T["user_select"], ["User 1", "User 2"], key="current_user_account")
+
 st.title(T["title"])
 
-# --- DATABASE SETUP ---
-DB_FILE = "shopee_products.db"
-
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            p_id INTEGER PRIMARY KEY, cat_id TEXT, psku TEXT, integ TEXT,
-            brand TEXT, name TEXT, weight REAL, desc TEXT, cimg TEXT,
-            v1n TEXT, v1o TEXT, v1i TEXT, v2n TEXT, v2o TEXT
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS variations (
-            p_id INTEGER, variation_title TEXT, sku TEXT, cost_jpy INTEGER,
-            weight_g REAL, profit_rate REAL, stock INTEGER, opt1 TEXT, opt2 TEXT,
-            PRIMARY KEY (p_id, variation_title)
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# --- DATABASE CONNECTION (SUPABASE POSTGRESQL) ---
+def get_db_connection():
+    try:
+        conn = psycopg2.connect(st.secrets["postgres"]["url"])
+        return conn
+    except Exception as e:
+        st.error(f"ไม่สามารถเชื่อมต่อฐานข้อมูล Supabase ได้: {e}")
+        return None
 
 def save_product_to_db(p_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''
-        INSERT OR REPLACE INTO products 
-        (p_id, cat_id, psku, integ, brand, name, weight, desc, cimg, v1n, v1o, v1i, v2n, v2o)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        p_id, st.session_state.get(f"cat_{p_id}", ""), st.session_state.get(f"psku_{p_id}", ""),
+    conn = get_db_connection()
+    if not conn: return
+    cur = conn.cursor()
+    query = """
+        INSERT INTO products 
+        (p_id, user_id, cat_id, psku, integ, brand, name, weight, p_desc, cimg, v1n, v1o, v1i, v2n, v2o)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (p_id) DO UPDATE SET
+            cat_id = EXCLUDED.cat_id,
+            psku = EXCLUDED.psku,
+            integ = EXCLUDED.integ,
+            brand = EXCLUDED.brand,
+            name = EXCLUDED.name,
+            weight = EXCLUDED.weight,
+            p_desc = EXCLUDED.p_desc,
+            cimg = EXCLUDED.cimg,
+            v1n = EXCLUDED.v1n,
+            v1o = EXCLUDED.v1o,
+            v1i = EXCLUDED.v1i,
+            v2n = EXCLUDED.v2n,
+            v2o = EXCLUDED.v2o;
+    """
+    cur.execute(query, (
+        str(p_id), selected_user,
+        st.session_state.get(f"cat_{p_id}", ""), st.session_state.get(f"psku_{p_id}", ""),
         st.session_state.get(f"integ_{p_id}", ""), st.session_state.get(f"brand_{p_id}", ""),
         st.session_state.get(f"name_{p_id}", ""), float(st.session_state.get(f"w_{p_id}", 0.0)),
         st.session_state.get(f"desc_{p_id}", ""), st.session_state.get(f"cimg_{p_id}", ""),
@@ -150,90 +159,98 @@ def save_product_to_db(p_id):
         st.session_state.get(f"v2o_{p_id}", "")
     ))
     conn.commit()
+    cur.close()
     conn.close()
 
 def save_variations_to_db(p_id, df_vars):
     if df_vars is None: return
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('DELETE FROM variations WHERE p_id = ?', (p_id,))
+    conn = get_db_connection()
+    if not conn: return
+    cur = conn.cursor()
+    cur.execute("DELETE FROM variations WHERE p_id = %s;", (str(p_id),))
     if not df_vars.empty:
+        query = """
+            INSERT INTO variations (p_id, variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+        """
         for _, row in df_vars.iterrows():
-            c.execute('''
-                INSERT INTO variations (p_id, variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                p_id, str(row.get("Variation", "")), str(row.get("SKU", "")),
+            cur.execute(query, (
+                str(p_id), str(row.get("Variation", "")), str(row.get("SKU", "")),
                 int(row.get("cost_jpy", 0)), float(row.get("weight_g", 0)),
                 float(row.get("profit_rate", 0)), int(row.get("stock", 0)),
                 str(row.get("Opt1", "")), str(row.get("Opt2", ""))
             ))
     conn.commit()
+    cur.close()
     conn.close()
 
-def load_all_from_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('SELECT * FROM products ORDER BY p_id ASC')
-    prods = c.fetchall()
+def load_user_products_from_db():
+    conn = get_db_connection()
+    if not conn: return False
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM products WHERE user_id = %s ORDER BY created_at ASC;", (selected_user,))
+    prods = cur.fetchall()
+    
     if not prods:
+        cur.close()
         conn.close()
         return False
 
     st.session_state.products_list = []
-    max_id = -1
     for row in prods:
-        p_id = row[0]
+        p_id = str(row[0])
         st.session_state.products_list.append(p_id)
-        if p_id > max_id: max_id = p_id
             
-        st.session_state[f"cat_{p_id}"] = row[1]
-        st.session_state[f"psku_{p_id}"] = row[2]
-        st.session_state[f"integ_{p_id}"] = row[3]
-        st.session_state[f"brand_{p_id}"] = row[4]
-        st.session_state[f"name_{p_id}"] = row[5]
-        st.session_state[f"w_{p_id}"] = row[6]
-        st.session_state[f"desc_{p_id}"] = row[7]
-        st.session_state[f"cimg_{p_id}"] = row[8]
-        st.session_state[f"v1n_{p_id}"] = row[9]
-        st.session_state[f"v1o_{p_id}"] = row[10]
-        st.session_state[f"v1i_{p_id}"] = row[11]
-        st.session_state[f"v2n_{p_id}"] = row[12]
-        st.session_state[f"v2o_{p_id}"] = row[13]
+        st.session_state[f"cat_{p_id}"] = row[2]
+        st.session_state[f"psku_{p_id}"] = row[3]
+        st.session_state[f"integ_{p_id}"] = row[4]
+        st.session_state[f"brand_{p_id}"] = row[5]
+        st.session_state[f"name_{p_id}"] = row[6]
+        st.session_state[f"w_{p_id}"] = float(row[7]) if row[7] else 0.0
+        st.session_state[f"desc_{p_id}"] = row[8]
+        st.session_state[f"cimg_{p_id}"] = row[9]
+        st.session_state[f"v1n_{p_id}"] = row[10]
+        st.session_state[f"v1o_{p_id}"] = row[11]
+        st.session_state[f"v1i_{p_id}"] = row[12]
+        st.session_state[f"v2n_{p_id}"] = row[13]
+        st.session_state[f"v2o_{p_id}"] = row[14]
 
-        c.execute('SELECT variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2 FROM variations WHERE p_id = ?', (p_id,))
-        vars_rows = c.fetchall()
+        cur.execute("""
+            SELECT variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2 
+            FROM variations WHERE p_id = %s;
+        """, (p_id,))
+        vars_rows = cur.fetchall()
         if vars_rows:
             var_list = []
             for v in vars_rows:
                 var_list.append({
                     "Variation": v[0], "SKU": v[1], "cost_jpy": v[2],
-                    "weight_g": v[3], "profit_rate": v[4], "selling_price": 0,
+                    "weight_g": float(v[3]), "profit_rate": float(v[4]), "selling_price": 0,
                     "stock": v[5], "Opt1": v[6], "Opt2": v[7]
                 })
             st.session_state[f"df_data_{p_id}"] = pd.DataFrame(var_list)
 
-    st.session_state.next_prod_id = max_id + 1
+    cur.close()
     conn.close()
     return True
 
 def delete_product_from_db(p_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('DELETE FROM products WHERE p_id = ?', (p_id,))
-    c.execute('DELETE FROM variations WHERE p_id = ?', (p_id,))
+    conn = get_db_connection()
+    if not conn: return
+    cur = conn.cursor()
+    cur.execute("DELETE FROM products WHERE p_id = %s AND user_id = %s;", (str(p_id), selected_user))
     conn.commit()
+    cur.close()
     conn.close()
 
-def clear_entire_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('DELETE FROM products')
-    c.execute('DELETE FROM variations')
+def clear_entire_user_db():
+    conn = get_db_connection()
+    if not conn: return
+    cur = conn.cursor()
+    cur.execute("DELETE FROM products WHERE user_id = %s;", (selected_user,))
     conn.commit()
+    cur.close()
     conn.close()
-
-init_db()
 
 # --- EXCHANGE RATES API ---
 @st.cache_data(ttl=3600)
@@ -371,14 +388,15 @@ def create_demo_product(p_id):
     st.session_state[f"v2n_{p_id}"] = T["default_v2_name"]
     st.session_state[f"v2o_{p_id}"] = T["default_v2_opts"]
 
-if "loaded_from_db" not in st.session_state:
-    has_db_data = load_all_from_db()
-    st.session_state.loaded_from_db = True
+# โหลดข้อมูลของผู้ใช้ที่เลือก
+if "loaded_user" not in st.session_state or st.session_state.loaded_user != selected_user:
+    has_db_data = load_user_products_from_db()
+    st.session_state.loaded_user = selected_user
     if not has_db_data:
-        st.session_state.products_list = [0]
-        st.session_state.next_prod_id = 1
-        create_demo_product(0)
-        save_product_to_db(0)
+        demo_id = str(uuid.uuid4())
+        st.session_state.products_list = [demo_id]
+        create_demo_product(demo_id)
+        save_product_to_db(demo_id)
 
 # --- CONTROL PANEL ---
 realtime_rates = fetch_base_rates()
@@ -404,8 +422,7 @@ st.markdown("---")
 col_btn1, col_btn2, col_space = st.columns([2, 2, 6])
 with col_btn1:
     if st.button(T["add_product"]):
-        new_id = st.session_state.next_prod_id
-        st.session_state.next_prod_id += 1
+        new_id = str(uuid.uuid4())
         st.session_state.products_list.append(new_id)
         create_blank_product(new_id)
         save_product_to_db(new_id)
@@ -413,14 +430,14 @@ with col_btn1:
 
 with col_btn2:
     if st.button(T["clear_all"], type="secondary"):
-        clear_entire_db()
+        clear_entire_user_db()
         for k in list(st.session_state.keys()):
-            if k not in ["global_currency", "global_rate", "app_language"]:
+            if k not in ["global_currency", "global_rate", "app_language", "current_user_account"]:
                 del st.session_state[k]
-        st.session_state.products_list = [0]
-        st.session_state.next_prod_id = 1
-        create_demo_product(0)
-        save_product_to_db(0)
+        demo_id = str(uuid.uuid4())
+        st.session_state.products_list = [demo_id]
+        create_demo_product(demo_id)
+        save_product_to_db(demo_id)
         st.rerun()
 
 updated_products_data = []
@@ -737,6 +754,6 @@ if st.button(T["btn_generate"], type="primary", use_container_width=True):
     st.download_button(
         label=T["btn_download"],
         data=output,
-        file_name=f"Shopee_Mass_Upload_{currency}.xlsx",
+        file_name=f"Shopee_Mass_Upload_{currency}_{selected_user}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
