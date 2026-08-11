@@ -128,129 +128,147 @@ def get_db_connection():
 def save_product_to_db(p_id):
     conn = get_db_connection()
     if not conn: return
-    cur = conn.cursor()
-    query = """
-        INSERT INTO products 
-        (p_id, user_id, cat_id, psku, integ, brand, name, weight, p_desc, cimg, v1n, v1o, v1i, v2n, v2o)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (p_id) DO UPDATE SET
-            cat_id = EXCLUDED.cat_id,
-            psku = EXCLUDED.psku,
-            integ = EXCLUDED.integ,
-            brand = EXCLUDED.brand,
-            name = EXCLUDED.name,
-            weight = EXCLUDED.weight,
-            p_desc = EXCLUDED.p_desc,
-            cimg = EXCLUDED.cimg,
-            v1n = EXCLUDED.v1n,
-            v1o = EXCLUDED.v1o,
-            v1i = EXCLUDED.v1i,
-            v2n = EXCLUDED.v2n,
-            v2o = EXCLUDED.v2o;
-    """
-    cur.execute(query, (
-        str(p_id), selected_user,
-        st.session_state.get(f"cat_{p_id}", ""), st.session_state.get(f"psku_{p_id}", ""),
-        st.session_state.get(f"integ_{p_id}", ""), st.session_state.get(f"brand_{p_id}", ""),
-        st.session_state.get(f"name_{p_id}", ""), float(st.session_state.get(f"w_{p_id}", 0.0)),
-        st.session_state.get(f"desc_{p_id}", ""), st.session_state.get(f"cimg_{p_id}", ""),
-        st.session_state.get(f"v1n_{p_id}", ""), st.session_state.get(f"v1o_{p_id}", ""),
-        st.session_state.get(f"v1i_{p_id}", ""), st.session_state.get(f"v2n_{p_id}", ""),
-        st.session_state.get(f"v2o_{p_id}", "")
-    ))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        query = """
+            INSERT INTO products 
+            (p_id, user_id, cat_id, psku, integ, brand, name, weight, p_desc, cimg, v1n, v1o, v1i, v2n, v2o)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (p_id) DO UPDATE SET
+                cat_id = EXCLUDED.cat_id,
+                psku = EXCLUDED.psku,
+                integ = EXCLUDED.integ,
+                brand = EXCLUDED.brand,
+                name = EXCLUDED.name,
+                weight = EXCLUDED.weight,
+                p_desc = EXCLUDED.p_desc,
+                cimg = EXCLUDED.cimg,
+                v1n = EXCLUDED.v1n,
+                v1o = EXCLUDED.v1o,
+                v1i = EXCLUDED.v1i,
+                v2n = EXCLUDED.v2n,
+                v2o = EXCLUDED.v2o;
+        """
+        cur.execute(query, (
+            str(p_id), selected_user,
+            st.session_state.get(f"cat_{p_id}", ""), st.session_state.get(f"psku_{p_id}", ""),
+            st.session_state.get(f"integ_{p_id}", ""), st.session_state.get(f"brand_{p_id}", ""),
+            st.session_state.get(f"name_{p_id}", ""), float(st.session_state.get(f"w_{p_id}", 0.0)),
+            st.session_state.get(f"desc_{p_id}", ""), st.session_state.get(f"cimg_{p_id}", ""),
+            st.session_state.get(f"v1n_{p_id}", ""), st.session_state.get(f"v1o_{p_id}", ""),
+            st.session_state.get(f"v1i_{p_id}", ""), st.session_state.get(f"v2n_{p_id}", ""),
+            st.session_state.get(f"v2o_{p_id}", "")
+        ))
+        conn.commit()
+        cur.close()
+    except Exception:
+        if conn: conn.rollback()
+    finally:
+        if conn: conn.close()
 
 def save_variations_to_db(p_id, df_vars):
-    if df_vars is None: return
+    if df_vars is None or df_vars.empty: return
     conn = get_db_connection()
     if not conn: return
-    cur = conn.cursor()
-    cur.execute("DELETE FROM variations WHERE p_id = %s;", (str(p_id),))
-    if not df_vars.empty:
+    try:
+        cur = conn.cursor()
+        # 1. ลบข้อมูลเดิมของสินค้านี้ออกก่อน
+        cur.execute("DELETE FROM variations WHERE p_id = %s;", (str(p_id),))
+        
+        # 2. กรองข้อมูลตัวเลือกซ้ำออกก่อนบันทึก
+        clean_df = df_vars.drop_duplicates(subset=["Variation"])
+        
         query = """
             INSERT INTO variations (p_id, variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING;
         """
-        for _, row in df_vars.iterrows():
+        for _, row in clean_df.iterrows():
             cur.execute(query, (
                 str(p_id), str(row.get("Variation", "")), str(row.get("SKU", "")),
                 int(row.get("cost_jpy", 0)), float(row.get("weight_g", 0)),
                 float(row.get("profit_rate", 0)), int(row.get("stock", 0)),
                 str(row.get("Opt1", "")), str(row.get("Opt2", ""))
             ))
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+        cur.close()
+    except Exception:
+        if conn: conn.rollback()
+    finally:
+        if conn: conn.close()
 
 def load_user_products_from_db():
     conn = get_db_connection()
     if not conn: return False
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM products WHERE user_id = %s ORDER BY created_at ASC;", (selected_user,))
-    prods = cur.fetchall()
-    
-    if not prods:
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM products WHERE user_id = %s ORDER BY created_at ASC;", (selected_user,))
+        prods = cur.fetchall()
+        
+        if not prods:
+            cur.close()
+            return False
+
+        st.session_state.products_list = []
+        for row in prods:
+            p_id = str(row[0])
+            st.session_state.products_list.append(p_id)
+                
+            st.session_state[f"cat_{p_id}"] = row[2]
+            st.session_state[f"psku_{p_id}"] = row[3]
+            st.session_state[f"integ_{p_id}"] = row[4]
+            st.session_state[f"brand_{p_id}"] = row[5]
+            st.session_state[f"name_{p_id}"] = row[6]
+            st.session_state[f"w_{p_id}"] = float(row[7]) if row[7] else 0.0
+            st.session_state[f"desc_{p_id}"] = row[8]
+            st.session_state[f"cimg_{p_id}"] = row[9]
+            st.session_state[f"v1n_{p_id}"] = row[10]
+            st.session_state[f"v1o_{p_id}"] = row[11]
+            st.session_state[f"v1i_{p_id}"] = row[12]
+            st.session_state[f"v2n_{p_id}"] = row[13]
+            st.session_state[f"v2o_{p_id}"] = row[14]
+
+            cur.execute("""
+                SELECT variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2 
+                FROM variations WHERE p_id = %s;
+            """, (p_id,))
+            vars_rows = cur.fetchall()
+            if vars_rows:
+                var_list = []
+                for v in vars_rows:
+                    var_list.append({
+                        "Variation": v[0], "SKU": v[1], "cost_jpy": v[2],
+                        "weight_g": float(v[3]), "profit_rate": float(v[4]), "selling_price": 0,
+                        "stock": v[5], "Opt1": v[6], "Opt2": v[7]
+                    })
+                st.session_state[f"df_data_{p_id}"] = pd.DataFrame(var_list)
+
         cur.close()
-        conn.close()
-        return False
-
-    st.session_state.products_list = []
-    for row in prods:
-        p_id = str(row[0])
-        st.session_state.products_list.append(p_id)
-            
-        st.session_state[f"cat_{p_id}"] = row[2]
-        st.session_state[f"psku_{p_id}"] = row[3]
-        st.session_state[f"integ_{p_id}"] = row[4]
-        st.session_state[f"brand_{p_id}"] = row[5]
-        st.session_state[f"name_{p_id}"] = row[6]
-        st.session_state[f"w_{p_id}"] = float(row[7]) if row[7] else 0.0
-        st.session_state[f"desc_{p_id}"] = row[8]
-        st.session_state[f"cimg_{p_id}"] = row[9]
-        st.session_state[f"v1n_{p_id}"] = row[10]
-        st.session_state[f"v1o_{p_id}"] = row[11]
-        st.session_state[f"v1i_{p_id}"] = row[12]
-        st.session_state[f"v2n_{p_id}"] = row[13]
-        st.session_state[f"v2o_{p_id}"] = row[14]
-
-        cur.execute("""
-            SELECT variation_title, sku, cost_jpy, weight_g, profit_rate, stock, opt1, opt2 
-            FROM variations WHERE p_id = %s;
-        """, (p_id,))
-        vars_rows = cur.fetchall()
-        if vars_rows:
-            var_list = []
-            for v in vars_rows:
-                var_list.append({
-                    "Variation": v[0], "SKU": v[1], "cost_jpy": v[2],
-                    "weight_g": float(v[3]), "profit_rate": float(v[4]), "selling_price": 0,
-                    "stock": v[5], "Opt1": v[6], "Opt2": v[7]
-                })
-            st.session_state[f"df_data_{p_id}"] = pd.DataFrame(var_list)
-
-    cur.close()
-    conn.close()
-    return True
+        return True
+    finally:
+        if conn: conn.close()
 
 def delete_product_from_db(p_id):
     conn = get_db_connection()
     if not conn: return
-    cur = conn.cursor()
-    cur.execute("DELETE FROM products WHERE p_id = %s AND user_id = %s;", (str(p_id), selected_user))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM products WHERE p_id = %s AND user_id = %s;", (str(p_id), selected_user))
+        conn.commit()
+        cur.close()
+    finally:
+        if conn: conn.close()
 
 def clear_entire_user_db():
     conn = get_db_connection()
     if not conn: return
-    cur = conn.cursor()
-    cur.execute("DELETE FROM products WHERE user_id = %s;", (selected_user,))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM products WHERE user_id = %s;", (selected_user,))
+        conn.commit()
+        cur.close()
+    finally:
+        if conn: conn.close()
 
 # --- EXCHANGE RATES API ---
 @st.cache_data(ttl=3600)
