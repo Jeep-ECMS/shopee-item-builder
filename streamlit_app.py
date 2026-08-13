@@ -426,12 +426,14 @@ with col_cur:
 
 with col_rate:
     current_realtime_rate = realtime_rates.get(currency, 4.73 if currency == "THB" else 2.65)
+    
+    # ใช้ Dynamic Key ตามสกุลเงิน เพื่อแก้ไขปัญหา Session State ค้างค่าเดิมเมื่อเปลี่ยน Currency
     rate_jpy = st.number_input(
         T["rate_label"].format(curr=currency), 
         value=current_realtime_rate, 
         format="%.4f",
         help=T["rate_info"],
-        key="global_rate"
+        key=f"rate_input_{currency}"
     )
     st.caption(f"{T['rate_info']}: **1 {currency} = {rate_jpy} JPY**")
 
@@ -450,7 +452,7 @@ with col_btn2:
     if st.button(T["clear_all"], type="secondary"):
         clear_entire_user_db()
         for k in list(st.session_state.keys()):
-            if k not in ["global_currency", "global_rate", "app_language", "current_user_account"]:
+            if k not in ["global_currency", "app_language", "current_user_account"]:
                 del st.session_state[k]
         demo_id = str(uuid.uuid4())
         st.session_state.products_list = [demo_id]
