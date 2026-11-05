@@ -41,35 +41,25 @@ def call_shopee_api(path, payload):
     response = requests.post(url, headers=headers, data=json.dumps(payload))
     return response.json()
 
-def upload_image_to_shopee(image_url):
-    """ ดาวน์โหลดรูปจาก Amazon พร้อม Header แล้วอัปโหลดเข้า Shopee """
+def upload_image_url_shopee(image_url):
+    """ อัปโหลดรูปภาพเข้า Shopee ผ่าน URL โดยตรง """
     path = "/api/v2/product/upload_image"
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        img_res = requests.get(image_url, headers=headers, timeout=15)
-        
-        if img_res.status_code != 200:
-            return None, f"HTTP Error {img_res.status_code} ตอนดาวน์โหลดรูปภาพจาก Amazon"
-            
-        img_bytes = img_res.content
-    except Exception as e:
-        return None, f"ดาวน์โหลดรูปไม่สำเร็จ: {e}"
-
     timestamp = int(time.time())
     sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, SHOPEE_ACCESS_TOKEN, SHOPEE_SHOP_ID)
     
     url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={SHOPEE_ACCESS_TOKEN}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     
-    files = {'image': ('image.jpg', img_bytes, 'image/jpeg')}
+    payload = {"image_url": image_url}
+    headers = {"Content-Type": "application/json"}
     
     try:
-        res = requests.post(url, files=files, timeout=30).json()
+        res = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30).json()
         if res.get("error") == "":
             return res.get("response", {}).get("image_info", {}).get("image_id"), None
         else:
-            return None, f"Shopee Error: {res.get('message', res.get('error'))}"
+            return None, res.get("message", res.get("error"))
     except Exception as e:
-        return None, f"API Connection Fail: {e}"
+        return None, str(e)
 
 # --- 3. PRICE & EXCHANGE RATE CALCULATION FORMULA ---
 @st.cache_data(ttl=3600)
@@ -185,14 +175,14 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, currency
     for img_url in images_to_upload[:8]:
         if not img_url:
             continue
-        img_id, err = upload_image_to_shopee(img_url)
+        img_id, err = upload_image_url_shopee(img_url)
         if img_id: 
             img_ids.append(img_id)
         else:
             last_err = err
         
     if not img_ids:
-        return False, f"อัปโหลดรูปภาพไม่สำเร็จ: {last_err}"
+        return False, f"อัปโหลดรูปภาพไม่สำเร็จ (Shopee Response: {last_err}) - กรุณาเช็ก Shop ID และ Access Token ใน Secrets"
 
     st.info("📦 กำลังสร้างสินค้าหลักบน Shopee...")
     item_payload = {
