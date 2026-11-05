@@ -4,10 +4,7 @@ import json
 import time
 import hmac
 import hashlib
-import itertools
 import urllib.request
-import psycopg2
-import uuid
 import pandas as pd
 
 st.set_page_config(page_title="Shopee Auto Listing & Price Calculator", layout="wide")
@@ -21,7 +18,6 @@ SHOPEE_ACCESS_TOKEN = st.secrets.get("shopee", {}).get("access_token", "")
 
 # --- 2. SHOPEE OPEN API SIGNATURE HELPER ---
 def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token="", shop_id=0):
-    """ สร้าง HMAC-SHA256 Signature สำหรับ Shopee Open API v2 """
     if access_token and shop_id:
         base_string = f"{partner_id}{path}{timestamp}{access_token}{shop_id}"
     else:
@@ -35,8 +31,7 @@ def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token=
     return sign
 
 def call_shopee_api(path, payload):
-    """ ฟังก์ชันยิง HTTP POST ไปยัง Shopee Open API v2 """
-    host = "https://partner.shopeemobile.com"  # Live Host
+    host = "https://partner.shopeemobile.com"
     timestamp = int(time.time())
     sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, SHOPEE_ACCESS_TOKEN, SHOPEE_SHOP_ID)
     
@@ -47,10 +42,12 @@ def call_shopee_api(path, payload):
     return response.json()
 
 def upload_image_to_shopee(image_url):
-    """ อัปโหลดรูปภาพด้วย URL เข้าเซิร์ฟเวอร์ Shopee """
     path = "/api/v2/product/upload_image"
-    # ดาวน์โหลดภาพแล้วส่งไฟล์ หรือใช้อัปโหลดผ่าน URL
-    img_bytes = requests.get(image_url).content
+    try:
+        img_bytes = requests.get(image_url, timeout=10).content
+    except Exception as e:
+        return None, f"ไม่สามารถดาวน์โหลดรูปภาพจาก URL ได้: {e}"
+
     timestamp = int(time.time())
     sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, SHOPEE_ACCESS_TOKEN, SHOPEE_SHOP_ID)
     
@@ -59,8 +56,8 @@ def upload_image_to_shopee(image_url):
     
     res = requests.post(url, files=files).json()
     if res.get("error") == "":
-        return res.get("response", {}).get("image_info", {}).get("image_id")
-    return None
+        return res.get("response", {}).get("image_info", {}).get("image_id"), None
+    return None, res.get("message", "Upload Image Error")
 
 # --- 3. PRICE & EXCHANGE RATE CALCULATION FORMULA ---
 @st.cache_data(ttl=3600)
@@ -82,7 +79,6 @@ def calculate_net_price(buying_price_jpy, weight_g, profit_rate_pct=30.0, curren
     if currency == "PHP":
         buying_price_php = buying_price_jpy / rate_to_jpy if rate_to_jpy > 0 else 0
         transportation_jp_php = 116.0
-        # SLS Fee Table PHP
         sls_fee = 76 + max(0, int((weight_g - 50) // 50)) * 25
         base_price = (sls_fee + buying_price_php + transportation_jp_php) / margin_factor
         cif_check = (base_price * 1.01) + (1369.0 * (weight_g / 1000.0))
@@ -106,7 +102,7 @@ def fetch_amazon_data_method_b(parent_asin):
     
     parent_res = requests.get(url, params=params).json()
     product_main = parent_res.get('product', {})
-    if not product_main: return None, "ไม่พบข้อมูลสินค้าบน Amazon"
+    if not product_main: return None, "ไม่พบข้อมูลสินค้าบน Amazon หรือ API Key ไม่ถูกต้อง"
 
     main_title = product_main.get('title', '')
     main_desc = product_main.get('description', main_title)
@@ -116,7 +112,6 @@ def fetch_amazon_data_method_b(parent_asin):
     extracted_vars = []
 
     if variants_list:
-        # วนลูปยิง API ดึงข้อมูลเจาะลึกทุก Child ASIN (วิธี B)
         for var in variants_list:
             child_asin = var.get('asin')
             if not child_asin: continue
@@ -163,23 +158,25 @@ def fetch_amazon_data_method_b(parent_asin):
 def publish_to_shopee(product_data, category_id, weight_g, profit_rate, currency_rate):
     st.info("🔄 กำลังอัปโหลดรูปภาพเข้าเซิร์ฟเวอร์ Shopee...")
     
-    # 1. Upload Cover Images
     img_ids = []
-    for img_url in product_data['images'][:8]: # สูงสุด 8 รูป
-        img_id = upload_image_to_shopee(img_url)
-        if img_id: img_ids.append(img_id)
+    last_err = ""
+    for img_url in product_data['images'][:8]:
+        img_id, err = upload_image_to_shopee(img_url)
+        if img_id: 
+            img_ids.append(img_id)
+        else:
+            last_err = err
         
     if not img_ids:
-        return False, "อัปโหลดรูปภาพไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ Shopee API Token"
+        return False, f"อัปโหลดรูปภาพไม่สำเร็จ: {last_err}"
 
-    # 2. Add Item (v2.product.add_item)
     st.info("📦 กำลังสร้างสินค้าหลักบน Shopee...")
     item_payload = {
         "category_id": int(category_id),
-        "item_name": product_data['title'][:120], # ความยาวตามเงื่อนไข Shopee
+        "item_name": product_data['title'][:120],
         "description": product_data['description'][:3000],
-        "item_status": "UNLISTED", # ตั้งเป็น UNLISTED ก่อนเพื่อตรวจสอบ
-        "weight": float(weight_g / 1000.0), # หน่วย KG
+        "item_status": "UNLISTED",
+        "weight": float(weight_g / 1000.0),
         "image": {"image_id_list": img_ids},
         "brand": {"brand_id": 0, "original_brand_name": "NoBrand"}
     }
@@ -190,13 +187,9 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, currency
     if not item_id:
         return False, f"สร้างสินค้าไม่สำเร็จ: {item_res.get('message')}"
 
-    # 3. Init Tier Variation (v2.product.init_tier_variation)
     st.info("⚙️ กำลังตั้งค่า Variation และราคาขาย...")
     
-    tier_index_list = []
     model_list = []
-    
-    # ดึงค่า Opt1 / Opt2
     opt1_names = list(set([v['opt1'] for v in product_data['variations']]))
     
     for idx, var in enumerate(product_data['variations']):
@@ -227,7 +220,6 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, currency
         return True, f"สำเร็จ! ลงสินค้าบน Shopee เรียบร้อยแล้ว (Item ID: {item_id})"
     else:
         return False, f"ตั้งค่า Variation ล้มเหลว: {tier_res.get('message')}"
-
 
 # --- 6. STREAMLIT USER INTERFACE ---
 st.title("🚀 Amazon ASIN to Shopee Direct Auto-Lister")
@@ -262,7 +254,6 @@ if "fetched_product" in st.session_state:
     st.subheader(f"📌 {pdata['title']}")
     st.text_area("รายละเอียดสินค้า", pdata['description'], height=100)
     
-    # Preview Table
     preview_rows = []
     for v in pdata['variations']:
         sell_p = calculate_net_price(v['cost_jpy'], weight_input, profit_input, "PHP", rates_php)
