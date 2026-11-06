@@ -16,12 +16,11 @@ SHOPEE_PARTNER_KEY = st.secrets.get("shopee", {}).get("partner_key", "")
 SHOPEE_SHOP_ID = st.secrets.get("shopee", {}).get("shop_id", 0)
 SHOPEE_ACCESS_TOKEN = st.secrets.get("shopee", {}).get("access_token", "")
 
-# --- Helper: แลก Code เป็น Access Token (POST Method + HMAC Sign) ---
+# --- Helper: แลก Code เป็น Access Token ---
 def exchange_code_for_token(code_val, shop_id_val):
     path = "/api/v2/auth/token/get"
     timestamp = int(time.time())
     
-    # Base string สำหรับการขอ Token (partner_id + path + timestamp)
     base_string = f"{SHOPEE_PARTNER_ID}{path}{timestamp}"
     sign = hmac.new(
         SHOPEE_PARTNER_KEY.encode('utf-8'),
@@ -65,26 +64,6 @@ def call_shopee_api(path, payload):
     
     response = requests.post(url, headers=headers, data=json.dumps(payload))
     return response.json()
-
-def upload_image_url_shopee(image_url):
-    """ อัปโหลดรูปภาพเข้า Shopee ผ่าน URL โดยตรง """
-    path = "/api/v2/product/upload_image"
-    timestamp = int(time.time())
-    sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, SHOPEE_ACCESS_TOKEN, SHOPEE_SHOP_ID)
-    
-    url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={SHOPEE_ACCESS_TOKEN}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
-    
-    payload = {"image_url": image_url}
-    headers = {"Content-Type": "application/json"}
-    
-    try:
-        res = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30).json()
-        if res.get("error") == "":
-            return res.get("response", {}).get("image_info", {}).get("image_id"), None
-        else:
-            return None, res.get("message", res.get("error"))
-    except Exception as e:
-        return None, str(e)
 
 # --- 3. PRICE & EXCHANGE RATE CALCULATION FORMULA ---
 @st.cache_data(ttl=3600)
@@ -188,43 +167,36 @@ def fetch_amazon_data_method_b(parent_asin):
 
 # --- 5. SHOPEE AUTOMATED DIRECT LISTING WORKFLOW ---
 def publish_to_shopee(product_data, category_id, weight_g, profit_rate, currency_rate):
-    st.info("🔄 กำลังอัปโหลดรูปภาพเข้าเซิร์ฟเวอร์ Shopee...")
-    
-    img_ids = []
-    last_err = ""
-    
+    st.info("📦 กำลังส่งข้อมูลสินค้าเข้าร้าน Shopee...")
+
+    # ส่ง URL รูปภาพเข้า Shopee โดยตรง
     images_to_upload = product_data.get('images', [])
     if not images_to_upload and product_data.get('variations'):
         images_to_upload = [v['image'] for v in product_data['variations'] if v.get('image')]
 
-    for img_url in images_to_upload[:8]:
-        if not img_url:
-            continue
-        img_id, err = upload_image_url_shopee(img_url)
-        if img_id: 
-            img_ids.append(img_id)
-        else:
-            last_err = err
-        
-    if not img_ids:
-        return False, f"อัปโหลดรูปภาพไม่สำเร็จ (Shopee Response: {last_err}) - กรุณาเช็ก Shop ID และ Access Token ใน Secrets"
+    image_urls = [url for url in images_to_upload[:8] if url]
 
-    st.info("📦 กำลังสร้างสินค้าหลักบน Shopee...")
     item_payload = {
         "category_id": int(category_id),
         "item_name": product_data['title'][:120],
         "description": product_data['description'][:3000] if product_data['description'] else product_data['title'][:120],
         "item_status": "UNLISTED",
         "weight": float(weight_g / 1000.0),
-        "image": {"image_id_list": img_ids},
+        "image": {"image_url_list": image_urls},
         "brand": {"brand_id": 0, "original_brand_name": "NoBrand"}
     }
     
     item_res = call_shopee_api("/api/v2/product/add_item", item_payload)
-    item_id = item_res.get("response", {}).get("item_id")
     
+    # ตรวจสอบ Error Response จาก Shopee API
+    if item_res.get("error") != "":
+        error_code = item_res.get("error")
+        error_msg = item_res.get("message", item_res.get("warning", ""))
+        return False, f"สร้างสินค้าไม่สำเร็จ (Shopee API ตอบกลับ: {error_code} - {error_msg})"
+
+    item_id = item_res.get("response", {}).get("item_id")
     if not item_id:
-        return False, f"สร้างสินค้าไม่สำเร็จ: {item_res.get('message', item_res.get('error'))}"
+        return False, f"สร้างสินค้าไม่สำเร็จ: {item_res}"
 
     st.info("⚙️ กำลังตั้งค่า Variation และราคาขาย...")
     
@@ -264,11 +236,10 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, currency
 st.title("🚀 Amazon ASIN to Shopee Direct Auto-Lister")
 st.caption("ระบบดึงข้อมูล ASIN Amazon คำนวณราคาขายอัตโนมัติ และ List เข้าร้านค้า Shopee ผ่าน API")
 
-# --- เครื่องมือช่วยแลก Token ชั่วคราว ---
 with st.expander("🔑 เครื่องมือแลก Shopee Access Token (คลิกเพื่อเปิด)"):
     col_c, col_s = st.columns(2)
     with col_c:
-        input_code = st.text_input("วางรหัส Code จาก URL:", value="46687061517963694751685a71647978")
+        input_code = st.text_input("วางรหัส Code จาก URL:", value="")
     with col_s:
         input_shop = st.text_input("Shop ID:", value="1376701906")
     
