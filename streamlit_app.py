@@ -16,6 +16,31 @@ SHOPEE_PARTNER_KEY = st.secrets.get("shopee", {}).get("partner_key", "")
 SHOPEE_SHOP_ID = st.secrets.get("shopee", {}).get("shop_id", 0)
 SHOPEE_ACCESS_TOKEN = st.secrets.get("shopee", {}).get("access_token", "")
 
+# --- Helper: แลก Code เป็น Access Token (POST Method + HMAC Sign) ---
+def exchange_code_for_token(code_val, shop_id_val):
+    path = "/api/v2/auth/token/get"
+    timestamp = int(time.time())
+    
+    # Base string สำหรับการขอ Token (partner_id + path + timestamp)
+    base_string = f"{SHOPEE_PARTNER_ID}{path}{timestamp}"
+    sign = hmac.new(
+        SHOPEE_PARTNER_KEY.encode('utf-8'),
+        base_string.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    
+    url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&sign={sign}"
+    
+    payload = {
+        "code": code_val.strip(),
+        "partner_id": int(SHOPEE_PARTNER_ID),
+        "shop_id": int(shop_id_val)
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    res = requests.post(url, headers=headers, data=json.dumps(payload)).json()
+    return res
+
 # --- 2. SHOPEE OPEN API SIGNATURE HELPER ---
 def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token="", shop_id=0):
     if access_token and shop_id:
@@ -238,6 +263,29 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, currency
 # --- 6. STREAMLIT USER INTERFACE ---
 st.title("🚀 Amazon ASIN to Shopee Direct Auto-Lister")
 st.caption("ระบบดึงข้อมูล ASIN Amazon คำนวณราคาขายอัตโนมัติ และ List เข้าร้านค้า Shopee ผ่าน API")
+
+# --- เครื่องมือช่วยแลก Token ชั่วคราว ---
+with st.expander("🔑 เครื่องมือแลก Shopee Access Token (คลิกเพื่อเปิด)"):
+    col_c, col_s = st.columns(2)
+    with col_c:
+        input_code = st.text_input("วางรหัส Code จาก URL:", value="46687061517963694751685a71647978")
+    with col_s:
+        input_shop = st.text_input("Shop ID:", value="1376701906")
+    
+    if st.button("🔑 กดเพื่อแลก Access Token"):
+        if input_code and input_shop:
+            token_res = exchange_code_for_token(input_code, input_shop)
+            if token_res.get("error") == "":
+                access_t = token_res.get("access_token", "")
+                st.success(f"✅ ได้รับ Access Token สำเร็จ!")
+                st.code(access_t, language="text")
+                st.info("ให้นำ Access Token ข้างบนนี้ไปวางใน Secrets ของ Streamlit Cloud ได้เลยครับ")
+            else:
+                st.error(f"❌ ล้มเหลว: {token_res.get('message', token_res.get('error'))}")
+        else:
+            st.warning("กรุณากรอก Code และ Shop ID ให้ครบถ้วน")
+
+st.markdown("---")
 
 rates = fetch_base_rates()
 rates_php = rates.get("PHP", 2.65)
