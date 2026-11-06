@@ -15,8 +15,9 @@ SHOPEE_PARTNER_ID = st.secrets.get("shopee", {}).get("partner_id", 0)
 SHOPEE_PARTNER_KEY = st.secrets.get("shopee", {}).get("partner_key", "")
 SHOPEE_SHOP_ID = st.secrets.get("shopee", {}).get("shop_id", 0)
 SHOPEE_ACCESS_TOKEN = st.secrets.get("shopee", {}).get("access_token", "")
+SHOPEE_REFRESH_TOKEN = st.secrets.get("shopee", {}).get("refresh_token", "")
 
-# --- Helper: แลก Code เป็น Access Token ---
+# --- Helper: แลก Code หรือ Refresh Token ---
 def exchange_code_for_token(code_val, shop_id_val):
     path = "/api/v2/auth/token/get"
     timestamp = int(time.time())
@@ -36,6 +37,25 @@ def exchange_code_for_token(code_val, shop_id_val):
     headers = {"Content-Type": "application/json"}
     return requests.post(url, headers=headers, data=json.dumps(payload)).json()
 
+def refresh_shopee_token(refresh_token_val, shop_id_val):
+    path = "/api/v2/auth/access_token/get"
+    timestamp = int(time.time())
+    base_string = f"{SHOPEE_PARTNER_ID}{path}{timestamp}"
+    sign = hmac.new(
+        SHOPEE_PARTNER_KEY.encode('utf-8'),
+        base_string.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    
+    url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&sign={sign}"
+    payload = {
+        "refresh_token": refresh_token_val,
+        "partner_id": int(SHOPEE_PARTNER_ID),
+        "shop_id": int(shop_id_val)
+    }
+    headers = {"Content-Type": "application/json"}
+    return requests.post(url, headers=headers, data=json.dumps(payload)).json()
+
 # --- 2. SHOPEE OPEN API SIGNATURE HELPER ---
 def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token="", shop_id=0):
     if access_token and shop_id:
@@ -49,11 +69,17 @@ def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token=
         hashlib.sha256
     ).hexdigest()
 
+def get_current_token():
+    if "live_access_token" in st.session_state and st.session_state["live_access_token"]:
+        return st.session_state["live_access_token"]
+    return SHOPEE_ACCESS_TOKEN
+
 def call_shopee_api(path, payload):
     host = "https://partner.shopeemobile.com"
     timestamp = int(time.time())
-    sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, SHOPEE_ACCESS_TOKEN, SHOPEE_SHOP_ID)
-    url = f"{host}{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={SHOPEE_ACCESS_TOKEN}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
+    token = get_current_token()
+    sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, token, SHOPEE_SHOP_ID)
+    url = f"{host}{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={token}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     headers = {"Content-Type": "application/json"}
     return requests.post(url, headers=headers, data=json.dumps(payload)).json()
 
@@ -70,8 +96,9 @@ def upload_image_file_to_shopee(image_url):
         return None, str(e)
 
     timestamp = int(time.time())
-    sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, SHOPEE_ACCESS_TOKEN, SHOPEE_SHOP_ID)
-    url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={SHOPEE_ACCESS_TOKEN}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
+    token = get_current_token()
+    sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, token, SHOPEE_SHOP_ID)
+    url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={token}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     
     files = {'image': ('image.jpg', img_bytes, 'image/jpeg')}
     try:
@@ -86,10 +113,6 @@ def upload_image_file_to_shopee(image_url):
 # --- 3. PRICE & THBJPY EXCHANGE RATE CALCULATION FORMULA ---
 @st.cache_data(ttl=3600)
 def fetch_thb_jpy_rate():
-    """ 
-    ดึงอัตราแลกเปลี่ยน THBJPY (เสมือน GOOGLEFINANCE("CURRENCY:THBJPY")) 
-    คำนวณ TTB และคำนวณ Exchange Rate = TTB / 1.025
-    """
     default_middle = 4.72
     try:
         req = urllib.request.Request("https://open.er-api.com/v6/latest/THB", headers={'User-Agent': 'Mozilla/5.0'})
@@ -99,8 +122,7 @@ def fetch_thb_jpy_rate():
     except:
         tt_middle = default_middle
 
-    # คำนวณ TTB และ Exchange Rate สุทธิ
-    ttb = round(tt_middle - 0.12, 2)  # โดยประมาณ TTB = TT Middle - 0.12
+    ttb = round(tt_middle - 0.12, 2)
     exchange_rate_final = round(ttb / 1.025, 2)
     return {
         "tt_middle": tt_middle,
@@ -109,17 +131,12 @@ def fetch_thb_jpy_rate():
     }
 
 def calculate_net_price_thb(buying_price_jpy, weight_g, profit_rate_pct=30.0, rate_thb_to_jpy=4.49):
-    """ คำนวณราคาขายสุทธิในหน่วย THB (บาท) """
     if buying_price_jpy <= 0: return 0
     margin_factor = 1.0 - (profit_rate_pct / 100.0)
     if margin_factor <= 0: margin_factor = 0.01
 
-    # แปลงทุน JPY เป็น THB
     buying_price_thb = buying_price_jpy / rate_thb_to_jpy if rate_thb_to_jpy > 0 else 0
-    
-    # ประมาณการค่าขนส่งและค่าธรรมเนียมแพลตฟอร์ม
     shipping_thb = max(45, int((weight_g / 100.0) * 25))
-    
     base_price = (buying_price_thb + shipping_thb) / margin_factor
     return round(base_price)
 
@@ -237,7 +254,7 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, rate_thb
             last_err = err
         
     if not img_ids:
-        return False, f"อัปโหลดรูปภาพไม่สำเร็จ ({last_err}) - กรุณาตรวจสอบการเชื่อมต่อ Shop ID และ Access Token"
+        return False, f"อัปโหลดรูปภาพไม่สำเร็จ ({last_err}) - กรุณากดแลก Token ใหม่ในกล่องด้านบน"
 
     st.info("📦 กำลังสร้างสินค้าหลักบน Shopee...")
     
@@ -303,19 +320,20 @@ st.caption("ดึงข้อมูล Amazon + คำนวณราคาข�
 
 rate_info = fetch_thb_jpy_rate()
 
-with st.expander("🔑 เครื่องมือแลก Shopee Access Token (คลิกเพื่อเปิด)"):
+with st.expander("🔑 เครื่องมือแลก/อัปเดต Shopee Access Token (ใช้งานสดทันที)"):
     col_c, col_s = st.columns(2)
     with col_c:
-        input_code = st.text_input("วางรหัส Code จาก URL:", value="")
+        input_code = st.text_input("วางรหัส Code ล่าสุดจาก URL:", value="")
     with col_s:
         input_shop = st.text_input("Shop ID:", value="1376701906")
     
-    if st.button("🔑 กดเพื่อแลก Access Token"):
+    if st.button("🔑 กดเพื่อแลก Token สดสำหรับ session นี้"):
         if input_code and input_shop:
             token_res = exchange_code_for_token(input_code, input_shop)
             if token_res.get("error") == "":
                 access_t = token_res.get("access_token", "")
-                st.success(f"✅ ได้รับ Access Token สำเร็จ!")
+                st.session_state["live_access_token"] = access_t
+                st.success(f"✅ เปิดใช้ Access Token สดในระบบสำเร็จ! (ไม่ต้องกด Save Secrets)")
                 st.code(access_t, language="text")
             else:
                 st.error(f"❌ ล้มเหลว: {token_res.get('message', token_res.get('error'))}")
