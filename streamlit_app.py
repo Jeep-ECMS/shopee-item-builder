@@ -14,10 +14,12 @@ RAINFOREST_API_KEY = st.secrets.get("rainforest", {}).get("api_key", "")
 SHOPEE_PARTNER_ID = st.secrets.get("shopee", {}).get("partner_id", 0)
 SHOPEE_PARTNER_KEY = st.secrets.get("shopee", {}).get("partner_key", "")
 SHOPEE_SHOP_ID = st.secrets.get("shopee", {}).get("shop_id", 0)
-SHOPEE_ACCESS_TOKEN = st.secrets.get("shopee", {}).get("access_token", "")
-SHOPEE_REFRESH_TOKEN = st.secrets.get("shopee", {}).get("refresh_token", "")
 
-# --- Helper: แลก Code หรือ Refresh Token ---
+# --- Initialize Session State Token ---
+if "live_access_token" not in st.session_state:
+    st.session_state["live_access_token"] = st.secrets.get("shopee", {}).get("access_token", "")
+
+# --- Helper: แลก Code เป็น Access Token ---
 def exchange_code_for_token(code_val, shop_id_val):
     path = "/api/v2/auth/token/get"
     timestamp = int(time.time())
@@ -37,25 +39,6 @@ def exchange_code_for_token(code_val, shop_id_val):
     headers = {"Content-Type": "application/json"}
     return requests.post(url, headers=headers, data=json.dumps(payload)).json()
 
-def refresh_shopee_token(refresh_token_val, shop_id_val):
-    path = "/api/v2/auth/access_token/get"
-    timestamp = int(time.time())
-    base_string = f"{SHOPEE_PARTNER_ID}{path}{timestamp}"
-    sign = hmac.new(
-        SHOPEE_PARTNER_KEY.encode('utf-8'),
-        base_string.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
-    
-    url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&sign={sign}"
-    payload = {
-        "refresh_token": refresh_token_val,
-        "partner_id": int(SHOPEE_PARTNER_ID),
-        "shop_id": int(shop_id_val)
-    }
-    headers = {"Content-Type": "application/json"}
-    return requests.post(url, headers=headers, data=json.dumps(payload)).json()
-
 # --- 2. SHOPEE OPEN API SIGNATURE HELPER ---
 def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token="", shop_id=0):
     if access_token and shop_id:
@@ -69,15 +52,10 @@ def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token=
         hashlib.sha256
     ).hexdigest()
 
-def get_current_token():
-    if "live_access_token" in st.session_state and st.session_state["live_access_token"]:
-        return st.session_state["live_access_token"]
-    return SHOPEE_ACCESS_TOKEN
-
 def call_shopee_api(path, payload):
     host = "https://partner.shopeemobile.com"
     timestamp = int(time.time())
-    token = get_current_token()
+    token = st.session_state.get("live_access_token", "")
     sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, token, SHOPEE_SHOP_ID)
     url = f"{host}{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={token}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     headers = {"Content-Type": "application/json"}
@@ -96,7 +74,7 @@ def upload_image_file_to_shopee(image_url):
         return None, str(e)
 
     timestamp = int(time.time())
-    token = get_current_token()
+    token = st.session_state.get("live_access_token", "")
     sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, token, SHOPEE_SHOP_ID)
     url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={token}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     
@@ -106,7 +84,7 @@ def upload_image_file_to_shopee(image_url):
         if res.get("error") == "":
             return res.get("response", {}).get("image_info", {}).get("image_id"), None
         else:
-            return None, res.get("message", res.get("error"))
+            return None, f"Shopee Error: {res.get('message', res.get('error'))}"
     except Exception as e:
         return None, str(e)
 
@@ -254,7 +232,7 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, rate_thb
             last_err = err
         
     if not img_ids:
-        return False, f"อัปโหลดรูปภาพไม่สำเร็จ ({last_err}) - กรุณากดแลก Token ใหม่ในกล่องด้านบน"
+        return False, f"อัปโหลดรูปภาพไม่สำเร็จ ({last_err})"
 
     st.info("📦 กำลังสร้างสินค้าหลักบน Shopee...")
     
@@ -333,7 +311,7 @@ with st.expander("🔑 เครื่องมือแลก/อัปเด�
             if token_res.get("error") == "":
                 access_t = token_res.get("access_token", "")
                 st.session_state["live_access_token"] = access_t
-                st.success(f"✅ เปิดใช้ Access Token สดในระบบสำเร็จ! (ไม่ต้องกด Save Secrets)")
+                st.success(f"✅ เปิดใช้ Access Token สดสำเร็จ! (Token ถูกล็อกไว้ในระบบแล้ว)")
                 st.code(access_t, language="text")
             else:
                 st.error(f"❌ ล้มเหลว: {token_res.get('message', token_res.get('error'))}")
