@@ -49,7 +49,6 @@ def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token=
     ).hexdigest()
 
 def get_current_access_token():
-    # ดึง Access Token จาก session_state ก่อน ถ้าไม่มีค่อยไปดึงจาก Secrets
     token = st.session_state.get("live_access_token", "")
     if not token:
         token = st.secrets.get("shopee", {}).get("access_token", "")
@@ -65,7 +64,7 @@ def call_shopee_api(path, payload):
     return requests.post(url, headers=headers, data=json.dumps(payload)).json()
 
 def upload_image_file_to_shopee(image_url):
-    """ ดาวน์โหลดรูปภาพและอัปโหลดเป็น File Multipart เพื่อรับ image_id """
+    """ ดาวน์โหลดรูปภาพและอัปโหลดเป็น File Multipart เพื่อรับ image_id (แก้ไข Signature สำหรับ upload_image) """
     path = "/api/v2/product/upload_image"
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -82,7 +81,9 @@ def upload_image_file_to_shopee(image_url):
     if not token:
         return None, "ไม่พบ Access Token ในระบบ กรุณากดแลก Token ก่อน"
 
-    sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, token, SHOPEE_SHOP_ID)
+    # **จุดแก้ไขสำคัญ**: การ Gen Sign สำหรับ upload_image ใช้ partner_id + path + timestamp เท่านั้น
+    sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, access_token="", shop_id=0)
+    
     url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={token}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     
     files = {'image': ('image.jpg', img_bytes, 'image/jpeg')}
@@ -318,13 +319,12 @@ with st.expander("🔑 เครื่องมือแลก/อัปเด�
             if token_res.get("error") == "":
                 access_t = token_res.get("access_token", "")
                 st.session_state["live_access_token"] = access_t
-                st.success(f"✅ เปิดใช้ Access Token สดสำเร็จ! (Token: {access_t[:10]}...)")
+                st.success(f"✅ เปิดใช้ Access Token สดสำเร็จ! (Token: {access_t[:12]}...)")
             else:
                 st.error(f"❌ ล้มเหลว: {token_res.get('message', token_res.get('error'))}")
         else:
             st.warning("กรุณากรอก Code และ Shop ID ให้ครบถ้วน")
 
-# แสดงสถานะ Token ปัจจุบัน
 current_token_preview = get_current_access_token()
 if current_token_preview:
     st.caption(f"🟢 สถานะ Token ปัจจุบันพร้อมใช้งาน: `{current_token_preview[:12]}...`")
