@@ -15,10 +15,6 @@ SHOPEE_PARTNER_ID = st.secrets.get("shopee", {}).get("partner_id", 0)
 SHOPEE_PARTNER_KEY = st.secrets.get("shopee", {}).get("partner_key", "")
 SHOPEE_SHOP_ID = st.secrets.get("shopee", {}).get("shop_id", 0)
 
-# --- Initialize Session State Token ---
-if "live_access_token" not in st.session_state:
-    st.session_state["live_access_token"] = st.secrets.get("shopee", {}).get("access_token", "")
-
 # --- Helper: แลก Code เป็น Access Token ---
 def exchange_code_for_token(code_val, shop_id_val):
     path = "/api/v2/auth/token/get"
@@ -52,10 +48,17 @@ def generate_shopee_sign(path, timestamp, partner_id, partner_key, access_token=
         hashlib.sha256
     ).hexdigest()
 
+def get_current_access_token():
+    # ดึง Access Token จาก session_state ก่อน ถ้าไม่มีค่อยไปดึงจาก Secrets
+    token = st.session_state.get("live_access_token", "")
+    if not token:
+        token = st.secrets.get("shopee", {}).get("access_token", "")
+    return token
+
 def call_shopee_api(path, payload):
     host = "https://partner.shopeemobile.com"
     timestamp = int(time.time())
-    token = st.session_state.get("live_access_token", "")
+    token = get_current_access_token()
     sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, token, SHOPEE_SHOP_ID)
     url = f"{host}{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={token}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     headers = {"Content-Type": "application/json"}
@@ -68,13 +71,17 @@ def upload_image_file_to_shopee(image_url):
         headers = {'User-Agent': 'Mozilla/5.0'}
         img_res = requests.get(image_url, headers=headers, timeout=15)
         if img_res.status_code != 200:
-            return None, f"HTTP Error {img_res.status_code}"
+            return None, f"HTTP Error {img_res.status_code} ดาวน์โหลดรูปต้นทางไม่สำเร็จ"
         img_bytes = img_res.content
     except Exception as e:
         return None, str(e)
 
     timestamp = int(time.time())
-    token = st.session_state.get("live_access_token", "")
+    token = get_current_access_token()
+    
+    if not token:
+        return None, "ไม่พบ Access Token ในระบบ กรุณากดแลก Token ก่อน"
+
     sign = generate_shopee_sign(path, timestamp, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, token, SHOPEE_SHOP_ID)
     url = f"https://partner.shopeemobile.com{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={timestamp}&access_token={token}&shop_id={SHOPEE_SHOP_ID}&sign={sign}"
     
@@ -84,7 +91,7 @@ def upload_image_file_to_shopee(image_url):
         if res.get("error") == "":
             return res.get("response", {}).get("image_info", {}).get("image_id"), None
         else:
-            return None, f"Shopee Error: {res.get('message', res.get('error'))}"
+            return None, f"Shopee Error Response: {json.dumps(res)}"
     except Exception as e:
         return None, str(e)
 
@@ -232,7 +239,7 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, rate_thb
             last_err = err
         
     if not img_ids:
-        return False, f"อัปโหลดรูปภาพไม่สำเร็จ ({last_err})"
+        return False, f"อัปโหลดรูปภาพไม่สำเร็จ: {last_err}"
 
     st.info("📦 กำลังสร้างสินค้าหลักบน Shopee...")
     
@@ -256,7 +263,7 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, rate_thb
     
     if not item_id:
         error_msg = item_res.get("message", item_res.get("error"))
-        return False, f"สร้างสินค้าไม่สำเร็จ: {error_msg}"
+        return False, f"สร้างสินค้าไม่สำเร็จ: {error_msg} (Response: {json.dumps(item_res)})"
 
     st.info("⚙️ กำลังตั้งค่า Variation และราคาขาย (THB)...")
     
@@ -294,11 +301,11 @@ def publish_to_shopee(product_data, category_id, weight_g, profit_rate, rate_thb
 
 # --- 6. STREAMLIT USER INTERFACE ---
 st.title("🚀 Amazon ASIN to Shopee Direct Auto-Lister (THB Price)")
-st.caption("ดึงข้อมูล Amazon + คำนวณราคาขาย THB อัตโนมัติ (Exchange Rate = TTB / 1.025) + List ลง Shopee")
+st.caption("ดึงข้อมูล Amazon + คำนวณราคาขาย THB อัตโนมัติ + List ลง Shopee")
 
 rate_info = fetch_thb_jpy_rate()
 
-with st.expander("🔑 เครื่องมือแลก/อัปเดต Shopee Access Token (ใช้งานสดทันที)"):
+with st.expander("🔑 เครื่องมือแลก/อัปเดต Shopee Access Token (ใช้งานสดทันที)", expanded=True):
     col_c, col_s = st.columns(2)
     with col_c:
         input_code = st.text_input("วางรหัส Code ล่าสุดจาก URL:", value="")
@@ -311,12 +318,18 @@ with st.expander("🔑 เครื่องมือแลก/อัปเด�
             if token_res.get("error") == "":
                 access_t = token_res.get("access_token", "")
                 st.session_state["live_access_token"] = access_t
-                st.success(f"✅ เปิดใช้ Access Token สดสำเร็จ! (Token ถูกล็อกไว้ในระบบแล้ว)")
-                st.code(access_t, language="text")
+                st.success(f"✅ เปิดใช้ Access Token สดสำเร็จ! (Token: {access_t[:10]}...)")
             else:
                 st.error(f"❌ ล้มเหลว: {token_res.get('message', token_res.get('error'))}")
         else:
             st.warning("กรุณากรอก Code และ Shop ID ให้ครบถ้วน")
+
+# แสดงสถานะ Token ปัจจุบัน
+current_token_preview = get_current_access_token()
+if current_token_preview:
+    st.caption(f"🟢 สถานะ Token ปัจจุบันพร้อมใช้งาน: `{current_token_preview[:12]}...`")
+else:
+    st.caption("🔴 ยังไม่มี Access Token ในระบบ กรุณากดแลกด้านบนก่อน")
 
 st.markdown("---")
 
